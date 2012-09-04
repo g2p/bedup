@@ -1,0 +1,142 @@
+#!/usr/bin/env python
+
+"""
+btrfs-find-new volume generation
+
+lists changes to volume since generation
+
+starting point is btrfs find-new,
+but modified to include directories as well.
+"""
+
+import argparse
+import fcntl
+import os
+import sys
+
+import cffi
+
+
+ffi = cffi.FFI()
+
+ffi.cdef("""
+    #define BTRFS_IOC_TREE_SEARCH ...
+
+    struct btrfs_ioctl_search_key {
+        /* possibly the root of the search
+         * though the ioctl fd seems to be used as well */
+        uint64_t tree_id;
+
+        /* keys returned will be >= min and <= max */
+        uint64_t min_objectid;
+        uint64_t max_objectid;
+
+        /* keys returned will be >= min and <= max */
+        uint64_t min_offset;
+        uint64_t max_offset;
+
+        /* max and min transids to search for */
+        uint64_t min_transid;
+        uint64_t max_transid;
+
+        /* keys returned will be >= min and <= max */
+        uint32_t min_type;
+        uint32_t max_type;
+
+        /*
+         * how many items did userland ask for, and how many are we
+         * returning
+         */
+        uint32_t nr_items;
+
+        ...;
+    };
+
+    struct btrfs_ioctl_search_header {
+        uint64_t transid;
+        uint64_t objectid;
+        uint64_t offset;
+        uint32_t type;
+        uint32_t len;
+    };
+
+    struct btrfs_ioctl_search_args {
+        /* search parameters and state */
+        struct btrfs_ioctl_search_key key;
+        /* found items */
+        char buf[];
+    };
+
+
+""")
+
+v = ffi.verify("#include <btrfs/ioctl.h>")
+
+# from ctree.h, not distributed with ioctl.h
+# extent data is for file data
+BTRFS_EXTENT_DATA_KEY = 108
+
+
+parser = argparse.ArgumentParser(usage=__doc__.strip())
+parser.add_argument('volume', help='volume to search')
+parser.add_argument(
+    'generation', type=int, default=0,
+    help='only show items modified at generation or a newer transaction')
+opts = parser.parse_args()
+
+volume = os.open(opts.volume, os.O_DIRECTORY)
+
+args = ffi.new('struct btrfs_ioctl_search_args *')
+args_buffer = ffi.buffer(args)
+sk = args.key
+
+# Not a valid objectid that I know.
+# But find-new uses that and it seems to work.
+sk.tree_id = 0
+
+sk.min_transid = opts.generation
+
+u64_max = ffi.cast('uint64_t', -1)
+
+sk.max_objectid = u64_max
+sk.max_offset = u64_max
+sk.max_transid = u64_max
+sk.max_type = BTRFS_EXTENT_DATA_KEY
+
+while True:
+    sk.nr_items = 4096
+
+    try:
+        fcntl.ioctl(volume, v.BTRFS_IOC_TREE_SEARCH, args_buffer)
+    except IOError as e:
+        print e
+        sys.exit(1)
+
+    if sk.nr_items == 0:
+        break
+    #sys.stderr.write('found %d items\n' % sk.nr_items)
+
+    offset = 0
+    for item_id in xrange(sk.nr_items):
+        sh = ffi.cast(
+            'struct btrfs_ioctl_search_header *', args.buf + offset)
+        offset += ffi.sizeof('struct btrfs_ioctl_search_header') + sh.len
+        #sys.stderr.write('offset %d\n' % offset)
+        if sh.type != BTRFS_EXTENT_DATA_KEY and False:
+            continue
+        if sh.transid < opts.generation:
+            continue
+        sys.stderr.write('item type %d len %d\n' % (sh.type, sh.len))
+    sk.min_objectid = sh.objectid
+    sk.min_type = sh.type
+    sk.min_offset = sh.offset
+
+    # CFFI 0.3 raises an OverflowError if necessary, no need to assert
+    #assert sk.min_offset < u64_max
+    # If the OverflowError actually happens in practice,
+    # we'll need to increase min_type resetting min_objectid to zero,
+    # then increase min_objectid resetting min_type and min_offset to zero. See
+    # https://btrfs.wiki.kernel.org/index.php/Btrfs_design#Btree_Data_structures
+    # and btrfs_key for the btree iteration order.
+    sk.min_offset += 1
+
