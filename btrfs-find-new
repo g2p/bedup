@@ -59,6 +59,7 @@ struct btrfs_ioctl_search_key {
 
 #define BTRFS_EXTENT_DATA_KEY ...
 #define BTRFS_INODE_REF_KEY ...
+#define BTRFS_INODE_ITEM_KEY ...
 
 struct btrfs_ioctl_search_header {
     uint64_t transid;
@@ -124,6 +125,42 @@ struct btrfs_file_extent_item {
     ...;
 };
 
+struct btrfs_timespec {
+	uint64_t sec;
+	uint32_t nsec;
+    ...;
+};
+
+struct btrfs_inode_item {
+	/* nfs style generation number */
+	uint64_t generation;
+	/* transid that last touched this inode */
+	uint64_t transid;
+	uint64_t size;
+	uint64_t nbytes;
+	uint64_t block_group;
+	uint32_t nlink;
+	uint32_t uid;
+	uint32_t gid;
+	uint32_t mode;
+	uint64_t rdev;
+	uint64_t flags;
+
+	/* modification sequence number for NFS */
+	uint64_t sequence;
+
+	/*
+	 * a little future expansion, for more than this we can
+	 * just grow the inode item and version it
+	 */
+	uint64_t reserved[4];
+	struct btrfs_timespec atime;
+	struct btrfs_timespec ctime;
+	struct btrfs_timespec mtime;
+	struct btrfs_timespec otime;
+    ...;
+};
+
 struct btrfs_inode_ref {
 	uint64_t index;
 	uint16_t name_len;
@@ -132,6 +169,7 @@ struct btrfs_inode_ref {
 };
 
 uint64_t btrfs_stack_file_extent_generation(struct btrfs_file_extent_item *s);
+uint64_t btrfs_stack_inode_generation(struct btrfs_inode_item *s);
 uint64_t btrfs_stack_inode_ref_name_len(struct btrfs_inode_ref *s);
 """)
 
@@ -152,6 +190,7 @@ volume_fd = os.open(opts.volume, os.O_DIRECTORY)
 
 
 def ino_resolve(ino):
+    # XXX Getting a path requires a search
     args = ffi.new('struct btrfs_ioctl_search_args *')
     args_buffer = ffi.buffer(args)
     sk = args.key
@@ -218,7 +257,16 @@ while True:
             item = ffi.cast(
                 'struct btrfs_file_extent_item *', sh + 1)
             found_gen = v.btrfs_stack_file_extent_generation(item)
-            # XXX Getting the path requires another search
+            name = ino_resolve(sh.objectid)
+            sys.stderr.write(
+                'item type %d ino %d len %d gen0 %d gen1 %d name %s\n' % (
+                    sh.type, sh.objectid, sh.len, sh.transid, found_gen, name))
+            if found_gen < opts.generation:
+                continue
+        elif sh.type == v.BTRFS_INODE_ITEM_KEY:
+            item = ffi.cast(
+                'struct btrfs_inode_item *', sh + 1)
+            found_gen = v.btrfs_stack_inode_generation(item)
             name = ino_resolve(sh.objectid)
             sys.stderr.write(
                 'item type %d ino %d len %d gen0 %d gen1 %d name %s\n' % (
