@@ -67,10 +67,62 @@ ffi.cdef("""
         char buf[];
     };
 
+struct btrfs_file_extent_item {
+	/*
+	 * transaction id that created this extent
+	 */
+	uint64_t generation;
+	/*
+	 * max number of bytes to hold this extent in ram
+	 * when we split a compressed extent we can't know how big
+	 * each of the resulting pieces will be.  So, this is
+	 * an upper limit on the size of the extent in ram instead of
+	 * an exact limit.
+	 */
+	uint64_t ram_bytes;
 
+	/*
+	 * 32 bits for the various ways we might encode the data,
+	 * including compression and encryption.  If any of these
+	 * are set to something a given disk format doesn't understand
+	 * it is treated like an incompat flag for reading and writing,
+	 * but not for stat.
+	 */
+	uint8_t compression;
+	uint8_t encryption;
+	uint16_t other_encoding; /* spare for later use */
+
+	/* are we inline data or a real extent? */
+	uint8_t type;
+
+	/*
+	 * disk space consumed by the extent, checksum blocks are included
+	 * in these numbers
+	 */
+	uint64_t disk_bytenr;
+	uint64_t disk_num_bytes;
+	/*
+	 * the logical offset in file blocks (no csums)
+	 * this extent record is for.  This allows a file extent to point
+	 * into the middle of an existing extent on disk, sharing it
+	 * between two snapshots (useful if some bytes in the middle of the
+	 * extent have changed
+	 */
+	uint64_t offset;
+	/*
+	 * the logical number of file blocks (no csums included)
+	 */
+	uint64_t num_bytes;
+    ...;
+
+};
 """)
 
-v = ffi.verify("#include <btrfs/ioctl.h>")
+v = ffi.verify('''
+    #include <btrfs-progs/ioctl.h>
+    #include <btrfs-progs/ctree.h>
+    ''',
+    include_dirs=[os.getcwd()])
 
 # from ctree.h, not distributed with ioctl.h
 # extent data is for file data
