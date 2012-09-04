@@ -76,29 +76,29 @@ struct btrfs_ioctl_search_args {
 };
 
 struct btrfs_file_extent_item {
-/*
- * transaction id that created this extent
- */
-uint64_t generation;
-/*
- * max number of bytes to hold this extent in ram
- * when we split a compressed extent we can't know how big
- * each of the resulting pieces will be.  So, this is
- * an upper limit on the size of the extent in ram instead of
- * an exact limit.
- */
-uint64_t ram_bytes;
+    /*
+     * transaction id that created this extent
+     */
+    uint64_t generation;
+    /*
+     * max number of bytes to hold this extent in ram
+     * when we split a compressed extent we can't know how big
+     * each of the resulting pieces will be.  So, this is
+     * an upper limit on the size of the extent in ram instead of
+     * an exact limit.
+     */
+    uint64_t ram_bytes;
 
-/*
- * 32 bits for the various ways we might encode the data,
- * including compression and encryption.  If any of these
- * are set to something a given disk format doesn't understand
- * it is treated like an incompat flag for reading and writing,
- * but not for stat.
- */
-uint8_t compression;
-uint8_t encryption;
-uint16_t other_encoding; /* spare for later use */
+    /*
+     * 32 bits for the various ways we might encode the data,
+     * including compression and encryption.  If any of these
+     * are set to something a given disk format doesn't understand
+     * it is treated like an incompat flag for reading and writing,
+     * but not for stat.
+     */
+    uint8_t compression;
+    uint8_t encryption;
+    uint16_t other_encoding; /* spare for later use */
 
 	/* are we inline data or a real extent? */
 	uint8_t type;
@@ -130,7 +130,6 @@ struct btrfs_inode_ref {
 	/* name goes here */
     ...;
 };
-
 
 uint64_t btrfs_stack_file_extent_generation(struct btrfs_file_extent_item *s);
 uint64_t btrfs_stack_inode_ref_name_len(struct btrfs_inode_ref *s);
@@ -205,14 +204,16 @@ while True:
 
     if sk.nr_items == 0:
         break
-    #sys.stderr.write('found %d items\n' % sk.nr_items)
 
     offset = 0
     for item_id in xrange(sk.nr_items):
         sh = ffi.cast(
             'struct btrfs_ioctl_search_header *', args.buf + offset)
         offset += ffi.sizeof('struct btrfs_ioctl_search_header') + sh.len
-        #sys.stderr.write('offset %d\n' % offset)
+
+        # XXX The classic btrfs find-new looks only at extents,
+        # and doesn't find empty files or directories.
+        # Need to look at other types.
         if sh.type == v.BTRFS_EXTENT_DATA_KEY:
             item = ffi.cast(
                 'struct btrfs_file_extent_item *', sh + 1)
