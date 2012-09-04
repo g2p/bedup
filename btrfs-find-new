@@ -20,77 +20,84 @@ import cffi
 ffi = cffi.FFI()
 
 ffi.cdef("""
-    #define BTRFS_IOC_TREE_SEARCH ...
+/* ioctl.h */
 
-    struct btrfs_ioctl_search_key {
-        /* possibly the root of the search
-         * though the ioctl fd seems to be used as well */
-        uint64_t tree_id;
+#define BTRFS_IOC_TREE_SEARCH ...
 
-        /* keys returned will be >= min and <= max */
-        uint64_t min_objectid;
-        uint64_t max_objectid;
+struct btrfs_ioctl_search_key {
+    /* possibly the root of the search
+     * though the ioctl fd seems to be used as well */
+    uint64_t tree_id;
 
-        /* keys returned will be >= min and <= max */
-        uint64_t min_offset;
-        uint64_t max_offset;
+    /* keys returned will be >= min and <= max */
+    uint64_t min_objectid;
+    uint64_t max_objectid;
 
-        /* max and min transids to search for */
-        uint64_t min_transid;
-        uint64_t max_transid;
+    /* keys returned will be >= min and <= max */
+    uint64_t min_offset;
+    uint64_t max_offset;
 
-        /* keys returned will be >= min and <= max */
-        uint32_t min_type;
-        uint32_t max_type;
+    /* max and min transids to search for */
+    uint64_t min_transid;
+    uint64_t max_transid;
 
-        /*
-         * how many items did userland ask for, and how many are we
-         * returning
-         */
-        uint32_t nr_items;
+    /* keys returned will be >= min and <= max */
+    uint32_t min_type;
+    uint32_t max_type;
 
-        ...;
-    };
+    /*
+     * how many items did userland ask for, and how many are we
+     * returning
+     */
+    uint32_t nr_items;
 
-    struct btrfs_ioctl_search_header {
-        uint64_t transid;
-        uint64_t objectid;
-        uint64_t offset;
-        uint32_t type;
-        uint32_t len;
-    };
+    ...;
+};
 
-    struct btrfs_ioctl_search_args {
-        /* search parameters and state */
-        struct btrfs_ioctl_search_key key;
-        /* found items */
-        char buf[];
-    };
+
+/* ctree.h */
+
+#define BTRFS_EXTENT_DATA_KEY ...
+
+struct btrfs_ioctl_search_header {
+    uint64_t transid;
+    uint64_t objectid;
+    uint64_t offset;
+    uint32_t type;
+    uint32_t len;
+};
+
+struct btrfs_ioctl_search_args {
+    /* search parameters and state */
+    struct btrfs_ioctl_search_key key;
+    /* found items */
+    char buf[];
+};
 
 struct btrfs_file_extent_item {
-	/*
-	 * transaction id that created this extent
-	 */
-	uint64_t generation;
-	/*
-	 * max number of bytes to hold this extent in ram
-	 * when we split a compressed extent we can't know how big
-	 * each of the resulting pieces will be.  So, this is
-	 * an upper limit on the size of the extent in ram instead of
-	 * an exact limit.
-	 */
-	uint64_t ram_bytes;
+/*
+ * transaction id that created this extent
+ */
+uint64_t generation;
+/*
+ * max number of bytes to hold this extent in ram
+ * when we split a compressed extent we can't know how big
+ * each of the resulting pieces will be.  So, this is
+ * an upper limit on the size of the extent in ram instead of
+ * an exact limit.
+ */
+uint64_t ram_bytes;
 
-	/*
-	 * 32 bits for the various ways we might encode the data,
-	 * including compression and encryption.  If any of these
-	 * are set to something a given disk format doesn't understand
-	 * it is treated like an incompat flag for reading and writing,
-	 * but not for stat.
-	 */
-	uint8_t compression;
-	uint8_t encryption;
-	uint16_t other_encoding; /* spare for later use */
+/*
+ * 32 bits for the various ways we might encode the data,
+ * including compression and encryption.  If any of these
+ * are set to something a given disk format doesn't understand
+ * it is treated like an incompat flag for reading and writing,
+ * but not for stat.
+ */
+uint8_t compression;
+uint8_t encryption;
+uint16_t other_encoding; /* spare for later use */
 
 	/* are we inline data or a real extent? */
 	uint8_t type;
@@ -114,8 +121,9 @@ struct btrfs_file_extent_item {
 	 */
 	uint64_t num_bytes;
     ...;
-
 };
+
+uint64_t btrfs_stack_file_extent_generation(struct btrfs_file_extent_item *s);
 """)
 
 v = ffi.verify('''
@@ -124,15 +132,10 @@ v = ffi.verify('''
     ''',
     include_dirs=[os.getcwd()])
 
-# from ctree.h, not distributed with ioctl.h
-# extent data is for file data
-BTRFS_EXTENT_DATA_KEY = 108
-
-
 parser = argparse.ArgumentParser(usage=__doc__.strip())
 parser.add_argument('volume', help='volume to search')
 parser.add_argument(
-    'generation', type=int, default=0,
+    'generation', type=int, nargs='?', default=0,
     help='only show items modified at generation or a newer transaction')
 opts = parser.parse_args()
 
@@ -153,7 +156,7 @@ u64_max = ffi.cast('uint64_t', -1)
 sk.max_objectid = u64_max
 sk.max_offset = u64_max
 sk.max_transid = u64_max
-sk.max_type = BTRFS_EXTENT_DATA_KEY
+sk.max_type = v.BTRFS_EXTENT_DATA_KEY
 
 while True:
     sk.nr_items = 4096
@@ -174,11 +177,20 @@ while True:
             'struct btrfs_ioctl_search_header *', args.buf + offset)
         offset += ffi.sizeof('struct btrfs_ioctl_search_header') + sh.len
         #sys.stderr.write('offset %d\n' % offset)
-        if sh.type != BTRFS_EXTENT_DATA_KEY and False:
-            continue
-        if sh.transid < opts.generation:
-            continue
-        sys.stderr.write('item type %d len %d\n' % (sh.type, sh.len))
+        if sh.type == v.BTRFS_EXTENT_DATA_KEY:
+            item = ffi.cast(
+                'struct btrfs_file_extent_item *', args.buf + offset - sh.len)
+            found_gen = v.btrfs_stack_file_extent_generation(item)
+            # XXX Getting the path requires another search
+            sys.stderr.write(
+                'item type %d ino %d len %d gen0 %d gen1 %d\n' % (
+                    sh.type, sh.objectid, sh.len, sh.transid, found_gen))
+            if found_gen < opts.generation:
+                continue
+        else:
+            sys.stderr.write(
+                'item type %d oid %d len %d gen0 %d\n' % (
+                    sh.type, sh.objectid, sh.len, sh.transid))
     sk.min_objectid = sh.objectid
     sk.min_type = sh.type
     sk.min_offset = sh.offset
