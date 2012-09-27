@@ -4,7 +4,6 @@ import cffi
 import fcntl
 
 
-import sys  # XXX
 from os import getcwd  # XXX
 
 
@@ -236,7 +235,11 @@ def name_of_dir_item(item):
     return ffi.string(ffi.cast('char*', item + 1), namelen)
 
 
-def find_new(volume_fd, min_generation):
+class FindError(Exception):
+    pass
+
+
+def find_new(volume_fd, min_generation, results_file):
     args = ffi.new('struct btrfs_ioctl_search_args *')
     args_buffer = ffi.buffer(args)
     sk = args.key
@@ -259,8 +262,7 @@ def find_new(volume_fd, min_generation):
             fcntl.ioctl(
                 volume_fd, v.BTRFS_IOC_TREE_SEARCH, args_buffer)
         except IOError as e:
-            sys.stderr.write('Exception %s\n' % (e,))
-            sys.exit(1)
+            raise FindError(e)
 
         if sk.nr_items == 0:
             break
@@ -281,7 +283,7 @@ def find_new(volume_fd, min_generation):
                     item)
                 # XXX How do we name a hardlinked file?
                 #name = ino_resolve(volume_fd, sh.objectid)
-                sys.stderr.write(
+                results_file.write(
                     'item type %d ino %d len %d gen0 %d gen1 %d\n' % (
                         sh.type, sh.objectid, sh.len, sh.transid, found_gen))
                 if found_gen < min_generation:
@@ -291,7 +293,7 @@ def find_new(volume_fd, min_generation):
                     'struct btrfs_inode_item *', sh + 1)
                 found_gen = v.btrfs_stack_inode_generation(item)
                 #name = ino_resolve(volume_fd, sh.objectid)
-                sys.stderr.write(
+                results_file.write(
                     'item type %d ino %d len %d gen0 %d gen1 %d\n' % (
                         sh.type, sh.objectid, sh.len, sh.transid, found_gen))
                 if found_gen < min_generation:
@@ -300,7 +302,7 @@ def find_new(volume_fd, min_generation):
                 ref = ffi.cast(
                     'struct btrfs_inode_ref *', sh + 1)
                 name = name_of_inode_ref(ref)
-                sys.stderr.write(
+                results_file.write(
                     'item type %d ino %d len %d gen0 %d name %s\n' % (
                         sh.type, sh.objectid, sh.len, sh.transid, name))
             elif (sh.type == v.BTRFS_DIR_ITEM_KEY
@@ -308,13 +310,13 @@ def find_new(volume_fd, min_generation):
                 item = ffi.cast(
                     'struct btrfs_dir_item *', sh + 1)
                 name = name_of_dir_item(item)
-                sys.stderr.write(
+                results_file.write(
                     'item type %d dir ino %d len %d'
                     ' gen0 %d gen1 %d type1 %d name %s\n' % (
                         sh.type, sh.objectid, sh.len,
                         sh.transid, item.transid, item.type, name))
             else:
-                sys.stderr.write(
+                results_file.write(
                     'item type %d oid %d len %d gen0 %d\n' % (
                         sh.type, sh.objectid, sh.len, sh.transid))
         sk.min_objectid = sh.objectid

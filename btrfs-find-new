@@ -12,6 +12,7 @@ but modified to include directories as well.
 
 import argparse
 import os
+import sys
 
 from btrfs import find_new
 
@@ -24,6 +25,6 @@ opts = parser.parse_args()
 
 volume_fd = os.open(opts.volume, os.O_DIRECTORY)
 
-find_new(volume_fd, opts.generation)
-
+# May raise FindError, let Python print it
+find_new(volume_fd, opts.generation, sys.stdout)
 
