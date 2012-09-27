@@ -60,6 +60,8 @@ struct btrfs_ioctl_search_key {
 #define BTRFS_EXTENT_DATA_KEY ...
 #define BTRFS_INODE_REF_KEY ...
 #define BTRFS_INODE_ITEM_KEY ...
+#define BTRFS_DIR_ITEM_KEY ...
+#define BTRFS_DIR_INDEX_KEY ...
 
 struct btrfs_ioctl_search_header {
     uint64_t transid;
@@ -168,9 +170,26 @@ struct btrfs_inode_ref {
     ...;
 };
 
+struct btrfs_disk_key {
+	uint64_t objectid;
+	uint8_t type;
+	uint64_t offset;
+	...;
+};
+
+struct btrfs_dir_item {
+	struct btrfs_disk_key location;
+	uint64_t transid;
+	uint16_t data_len;
+	uint16_t name_len;
+	uint8_t type;
+	...;
+};
+
 uint64_t btrfs_stack_file_extent_generation(struct btrfs_file_extent_item *s);
 uint64_t btrfs_stack_inode_generation(struct btrfs_inode_item *s);
 uint64_t btrfs_stack_inode_ref_name_len(struct btrfs_inode_ref *s);
+uint64_t btrfs_stack_dir_name_len(struct btrfs_dir_item *s);
 """)
 
 v = ffi.verify('''
@@ -190,7 +209,14 @@ volume_fd = os.open(opts.volume, os.O_DIRECTORY)
 
 
 def ino_resolve(ino):
-    # XXX Getting a path requires a search
+    """
+    A straightforward port of ino_resolve in btrfs-progs find-new.
+
+    Requires a search.
+    Conceptually broken because of files with multiple hardlinks.
+    btrfs does keep track of a preferred name for inodes though.
+    """
+
     args = ffi.new('struct btrfs_ioctl_search_args *')
     args_buffer = ffi.buffer(args)
     sk = args.key
@@ -210,9 +236,17 @@ def ino_resolve(ino):
     assert sh.type == v.BTRFS_INODE_REF_KEY
     ref = ffi.cast(
         'struct btrfs_inode_ref *', sh + 1)
+    return name_of_inode_ref(ref)
+
+
+def name_of_inode_ref(ref):
     namelen = v.btrfs_stack_inode_ref_name_len(ref)
-    name = ffi.string(ffi.cast('char*', ref + 1), namelen)
-    return name
+    return ffi.string(ffi.cast('char*', ref + 1), namelen)
+
+
+def name_of_dir_item(item):
+    namelen = v.btrfs_stack_dir_name_len(item)
+    return ffi.string(ffi.cast('char*', item + 1), namelen)
 
 
 args = ffi.new('struct btrfs_ioctl_search_args *')
@@ -257,22 +291,38 @@ while True:
             item = ffi.cast(
                 'struct btrfs_file_extent_item *', sh + 1)
             found_gen = v.btrfs_stack_file_extent_generation(item)
-            name = ino_resolve(sh.objectid)
+	    # XXX How do we name a hardlinked file?
+            #name = ino_resolve(sh.objectid)
             sys.stderr.write(
-                'item type %d ino %d len %d gen0 %d gen1 %d name %s\n' % (
-                    sh.type, sh.objectid, sh.len, sh.transid, found_gen, name))
+                'item type %d ino %d len %d gen0 %d gen1 %d\n' % (
+                    sh.type, sh.objectid, sh.len, sh.transid, found_gen))
             if found_gen < opts.generation:
                 continue
         elif sh.type == v.BTRFS_INODE_ITEM_KEY:
             item = ffi.cast(
                 'struct btrfs_inode_item *', sh + 1)
             found_gen = v.btrfs_stack_inode_generation(item)
-            name = ino_resolve(sh.objectid)
+            #name = ino_resolve(sh.objectid)
             sys.stderr.write(
-                'item type %d ino %d len %d gen0 %d gen1 %d name %s\n' % (
-                    sh.type, sh.objectid, sh.len, sh.transid, found_gen, name))
+                'item type %d ino %d len %d gen0 %d gen1 %d\n' % (
+                    sh.type, sh.objectid, sh.len, sh.transid, found_gen))
             if found_gen < opts.generation:
                 continue
+	elif sh.type == v.BTRFS_INODE_REF_KEY:
+            ref = ffi.cast(
+                'struct btrfs_inode_ref *', sh + 1)
+	    name = name_of_inode_ref(ref)
+            sys.stderr.write(
+                'item type %d ino %d len %d gen0 %d name %s\n' % (
+                    sh.type, sh.objectid, sh.len, sh.transid, name))
+	elif sh.type == v.BTRFS_DIR_ITEM_KEY or sh.type == v.BTRFS_DIR_INDEX_KEY:
+            item = ffi.cast(
+                'struct btrfs_dir_item *', sh + 1)
+	    name = name_of_dir_item(item)
+            sys.stderr.write(
+                'item type %d dir ino %d len %d gen0 %d gen1 %d type1 %d name %s\n' % (
+                    sh.type, sh.objectid, sh.len,
+		    sh.transid, item.transid, item.type, name))
         else:
             sys.stderr.write(
                 'item type %d oid %d len %d gen0 %d\n' % (
