@@ -4,11 +4,17 @@ Various utilities making use of Btrfs's capabilities.
 Currently contains a more complete reimplementation of `btrfs find-new`.
 
 
-Dependencies:
+# Dependencies
+
+Install CFFI:
+
+    pip install cffi
+
+Get btrfs-progs (we need the headers at a known location):
 
     git submodule update --init
 
-To run:
+# Usage
 
     sudo ./btrfs-find-new PATH
 
