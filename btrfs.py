@@ -178,13 +178,14 @@ struct btrfs_dir_item {
 
 uint64_t btrfs_stack_file_extent_generation(struct btrfs_file_extent_item *s);
 uint64_t btrfs_stack_inode_generation(struct btrfs_inode_item *s);
+uint64_t btrfs_stack_inode_size(struct btrfs_inode_item *s);
 uint64_t btrfs_stack_inode_ref_name_len(struct btrfs_inode_ref *s);
 uint64_t btrfs_stack_dir_name_len(struct btrfs_dir_item *s);
 """)
 
 
-# Also accessible as v
-v = ffi.verify('''
+# Also accessible as ffi.verifier.load_library()
+lib = ffi.verify('''
     #include <btrfs-progs/ioctl.h>
     #include <btrfs-progs/ctree.h>
     ''',
@@ -208,30 +209,30 @@ def ino_resolve(volume_fd, ino):
     sk = args.key
 
     sk.min_objectid = sk.max_objectid = ino
-    sk.min_type = sk.max_type = v.BTRFS_INODE_REF_KEY
+    sk.min_type = sk.max_type = lib.BTRFS_INODE_REF_KEY
     sk.max_offset = u64_max
     sk.max_transid = u64_max
     sk.nr_items = 1
 
-    fcntl.ioctl(volume_fd, v.BTRFS_IOC_TREE_SEARCH, args_buffer)
+    fcntl.ioctl(volume_fd, lib.BTRFS_IOC_TREE_SEARCH, args_buffer)
     if sk.nr_items == 0:
         return
 
     sh = ffi.cast(
         'struct btrfs_ioctl_search_header *', args.buf)
-    assert sh.type == v.BTRFS_INODE_REF_KEY
+    assert sh.type == lib.BTRFS_INODE_REF_KEY
     ref = ffi.cast(
         'struct btrfs_inode_ref *', sh + 1)
     return name_of_inode_ref(ref)
 
 
 def name_of_inode_ref(ref):
-    namelen = v.btrfs_stack_inode_ref_name_len(ref)
+    namelen = lib.btrfs_stack_inode_ref_name_len(ref)
     return ffi.string(ffi.cast('char*', ref + 1), namelen)
 
 
 def name_of_dir_item(item):
-    namelen = v.btrfs_stack_dir_name_len(item)
+    namelen = lib.btrfs_stack_dir_name_len(item)
     return ffi.string(ffi.cast('char*', item + 1), namelen)
 
 
@@ -253,14 +254,14 @@ def find_new(volume_fd, min_generation, results_file):
     sk.max_objectid = u64_max
     sk.max_offset = u64_max
     sk.max_transid = u64_max
-    sk.max_type = v.BTRFS_EXTENT_DATA_KEY
+    sk.max_type = lib.BTRFS_EXTENT_DATA_KEY
 
     while True:
         sk.nr_items = 4096
 
         try:
             fcntl.ioctl(
-                volume_fd, v.BTRFS_IOC_TREE_SEARCH, args_buffer)
+                volume_fd, lib.BTRFS_IOC_TREE_SEARCH, args_buffer)
         except IOError as e:
             raise FindError(e)
 
@@ -276,10 +277,10 @@ def find_new(volume_fd, min_generation, results_file):
             # XXX The classic btrfs find-new looks only at extents,
             # and doesn't find empty files or directories.
             # Need to look at other types.
-            if sh.type == v.BTRFS_EXTENT_DATA_KEY:
+            if sh.type == lib.BTRFS_EXTENT_DATA_KEY:
                 item = ffi.cast(
                     'struct btrfs_file_extent_item *', sh + 1)
-                found_gen = v.btrfs_stack_file_extent_generation(
+                found_gen = lib.btrfs_stack_file_extent_generation(
                     item)
                 # XXX How do we name a hardlinked file?
                 #name = ino_resolve(volume_fd, sh.objectid)
@@ -288,25 +289,25 @@ def find_new(volume_fd, min_generation, results_file):
                         sh.type, sh.objectid, sh.len, sh.transid, found_gen))
                 if found_gen < min_generation:
                     continue
-            elif sh.type == v.BTRFS_INODE_ITEM_KEY:
+            elif sh.type == lib.BTRFS_INODE_ITEM_KEY:
                 item = ffi.cast(
                     'struct btrfs_inode_item *', sh + 1)
-                found_gen = v.btrfs_stack_inode_generation(item)
+                found_gen = lib.btrfs_stack_inode_generation(item)
                 #name = ino_resolve(volume_fd, sh.objectid)
                 results_file.write(
                     'item type %d ino %d len %d gen0 %d gen1 %d\n' % (
                         sh.type, sh.objectid, sh.len, sh.transid, found_gen))
                 if found_gen < min_generation:
                     continue
-            elif sh.type == v.BTRFS_INODE_REF_KEY:
+            elif sh.type == lib.BTRFS_INODE_REF_KEY:
                 ref = ffi.cast(
                     'struct btrfs_inode_ref *', sh + 1)
                 name = name_of_inode_ref(ref)
                 results_file.write(
                     'item type %d ino %d len %d gen0 %d name %s\n' % (
                         sh.type, sh.objectid, sh.len, sh.transid, name))
-            elif (sh.type == v.BTRFS_DIR_ITEM_KEY
-                  or sh.type == v.BTRFS_DIR_INDEX_KEY):
+            elif (sh.type == lib.BTRFS_DIR_ITEM_KEY
+                  or sh.type == lib.BTRFS_DIR_INDEX_KEY):
                 item = ffi.cast(
                     'struct btrfs_dir_item *', sh + 1)
                 name = name_of_dir_item(item)

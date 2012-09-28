@@ -1,0 +1,99 @@
+#!/usr/bin/env python
+# vim: set fileencoding=utf-8 sw=4 ts=4 et :
+
+"""
+track-large-files
+
+Keeps track of large files.
+Maintains a size -> inode lookup table.
+"""
+
+import argparse
+import fcntl
+import os
+import sqlalchemy
+import sys
+import tracking_model
+import xdg.BaseDirectory  # pyxdg, apt:python-xdg
+import yaml
+
+
+def find_new(volume_fd, min_generation, results_file):
+    from btrfs import ffi, u64_max
+
+    args = ffi.new('struct btrfs_ioctl_search_args *')
+    args_buffer = ffi.buffer(args)
+    sk = args.key
+    lib = ffi.verifier.load_library()
+
+    # Not a valid objectid that I know.
+    # But find-new uses that and it seems to work.
+    sk.tree_id = 0
+
+    sk.min_transid = min_generation
+
+    sk.max_objectid = u64_max
+    sk.max_offset = u64_max
+    sk.max_transid = u64_max
+    sk.max_type = lib.BTRFS_EXTENT_DATA_KEY
+
+    while True:
+        sk.nr_items = 4096
+
+        try:
+            fcntl.ioctl(
+                volume_fd, lib.BTRFS_IOC_TREE_SEARCH, args_buffer)
+        except IOError as e:
+            raise
+
+        if sk.nr_items == 0:
+            break
+
+        offset = 0
+        for item_id in xrange(sk.nr_items):
+            sh = ffi.cast(
+                'struct btrfs_ioctl_search_header *', args.buf + offset)
+            offset += ffi.sizeof('struct btrfs_ioctl_search_header') + sh.len
+
+            # XXX The classic btrfs find-new looks only at extents,
+            # and doesn't find empty files or directories.
+            # Need to look at other types.
+            if sh.type == lib.BTRFS_INODE_ITEM_KEY:
+                item = ffi.cast(
+                    'struct btrfs_inode_item *', sh + 1)
+                found_gen = lib.btrfs_stack_inode_generation(item)
+                size = lib.btrfs_stack_inode_size(item)
+                #name = ino_resolve(volume_fd, sh.objectid)
+                results_file.write(
+                    'item type %d ino %d len %d'
+                    ' gen0 %d gen1 %d size %d\n' % (
+                        sh.type, sh.objectid, sh.len,
+                        sh.transid, found_gen, size))
+                if found_gen < min_generation:
+                    continue
+        sk.min_objectid = sh.objectid
+        sk.min_type = sh.type
+        sk.min_offset = sh.offset
+
+        sk.min_offset += 1
+
+
+parser = argparse.ArgumentParser(usage=__doc__.strip())
+parser.add_argument('volume', help='volume to search')
+opts = parser.parse_args()
+
+volume_fd = os.open(opts.volume, os.O_DIRECTORY)
+generation = 0
+
+APP_NAME = 'track-large-files'
+DATA_DIR = xdg.BaseDirectory.save_data_path(APP_NAME)
+
+
+url = sqlalchemy.engine.url.URL(
+    'sqlite', database=os.path.join(DATA_DIR, 'db.sqlite'))
+engine = sqlalchemy.engine.create_engine(url, echo=True)
+tracking_model.META.create_all(engine)
+
+# May raise FindError, let Python print it
+find_new(volume_fd, generation, sys.stdout)
+
