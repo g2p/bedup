@@ -1,7 +1,19 @@
 
+from sqlalchemy.orm.exc import NoResultFound
 from sqlalchemy.ext.declarative import declarative_base, declared_attr
+from sqlalchemy.util import generic_repr
 from sqlalchemy import (
     UnicodeText, Integer, Column, ForeignKey, UniqueConstraint)
+
+
+def get_or_create(sess, model, **kwargs):
+    try:
+        return sess.query(model).filter_by(**kwargs).one(), False
+    except NoResultFound:
+        instance = model(**kwargs)
+        sess.add(instance)
+        return instance, True
+
 
 class SuperBase(object):
     @declared_attr
@@ -9,9 +21,13 @@ class SuperBase(object):
         return cls.__name__
 Base = declarative_base(cls=SuperBase)
 
+
 class InodeAndSize(Base):
     inode = Column(Integer, primary_key=True)
     size = Column(Integer, index=True)
+
+    def __repr__(self):
+        return 'InodeAndSize(inode=%r, size=%r)' % (self.inode, self.size)
 
 META = Base.metadata
 

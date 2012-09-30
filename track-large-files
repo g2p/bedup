@@ -12,10 +12,16 @@ import argparse
 import fcntl
 import os
 import sqlalchemy
+import stat
 import sys
 import tracking_model
 import xdg.BaseDirectory  # pyxdg, apt:python-xdg
 import yaml
+
+from btrfs import lookup_ino_paths
+from sqlalchemy import func
+from sqlalchemy.orm import sessionmaker
+from tracking_model import InodeAndSize
 
 
 def find_new(volume_fd, min_generation, results_file):
@@ -55,45 +61,64 @@ def find_new(volume_fd, min_generation, results_file):
                 'struct btrfs_ioctl_search_header *', args.buf + offset)
             offset += ffi.sizeof('struct btrfs_ioctl_search_header') + sh.len
 
-            # XXX The classic btrfs find-new looks only at extents,
-            # and doesn't find empty files or directories.
-            # Need to look at other types.
             if sh.type == lib.BTRFS_INODE_ITEM_KEY:
                 item = ffi.cast(
                     'struct btrfs_inode_item *', sh + 1)
                 found_gen = lib.btrfs_stack_inode_generation(item)
                 size = lib.btrfs_stack_inode_size(item)
-                #name = ino_resolve(volume_fd, sh.objectid)
-                results_file.write(
-                    'item type %d ino %d len %d'
-                    ' gen0 %d gen1 %d size %d\n' % (
-                        sh.type, sh.objectid, sh.len,
-                        sh.transid, found_gen, size))
+                mode = lib.btrfs_stack_inode_mode(item)
+                if size < SIZE_CUTOFF:
+                    continue
                 if found_gen < min_generation:
                     continue
+                if not stat.S_ISREG(mode):
+                    continue
+                ias, created = tracking_model.get_or_create(
+                    sess,
+                    InodeAndSize,
+                    inode=sh.objectid,
+                    size=size)
+                names = list(lookup_ino_paths(volume_fd, sh.objectid))
+                results_file.write(
+                    'item type %d ino %d len %d'
+                    ' gen0 %d gen1 %d size %d names %r mode %o\n' % (
+                        sh.type, sh.objectid, sh.len,
+                        sh.transid, found_gen, size, names,
+                        mode))
         sk.min_objectid = sh.objectid
         sk.min_type = sh.type
         sk.min_offset = sh.offset
 
         sk.min_offset += 1
+    sess.commit()
+    for (size, inodes) in sess.query(
+        InodeAndSize.size, func.group_concat(InodeAndSize.inode)
+    ).group_by(InodeAndSize.size).having(func.count(InodeAndSize.inode) > 1):
+        inodes = map(int, inodes.split(','))
+        print size
+        for ino in inodes:
+            for path in lookup_ino_paths(volume_fd, ino):
+                print(ino, path)
 
 
 parser = argparse.ArgumentParser(usage=__doc__.strip())
 parser.add_argument('volume', help='volume to search')
 opts = parser.parse_args()
 
-volume_fd = os.open(opts.volume, os.O_DIRECTORY)
-generation = 0
-
 APP_NAME = 'track-large-files'
 DATA_DIR = xdg.BaseDirectory.save_data_path(APP_NAME)
 
-
 url = sqlalchemy.engine.url.URL(
     'sqlite', database=os.path.join(DATA_DIR, 'db.sqlite'))
-engine = sqlalchemy.engine.create_engine(url, echo=True)
+engine = sqlalchemy.engine.create_engine(url, echo=False)
+Session = sessionmaker(bind=engine)
+sess = Session()
 tracking_model.META.create_all(engine)
 
-# May raise FindError, let Python print it
+volume_fd = os.open(opts.volume, os.O_DIRECTORY)
+generation = 0
+SIZE_CUTOFF = 10
+
+# May raise IOError, let Python print it
 find_new(volume_fd, generation, sys.stdout)
 

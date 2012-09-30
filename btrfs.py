@@ -13,6 +13,7 @@ ffi.cdef("""
 /* ioctl.h */
 
 #define BTRFS_IOC_TREE_SEARCH ...
+#define BTRFS_IOC_INO_PATHS ...
 
 struct btrfs_ioctl_search_key {
     /* possibly the root of the search
@@ -67,6 +68,23 @@ struct btrfs_ioctl_search_args {
     /* found items */
     char buf[];
 };
+
+struct btrfs_data_container {
+    uint32_t    bytes_left; /* out -- bytes not needed to deliver output */
+    uint32_t    bytes_missing;  /* out -- additional bytes needed for result */
+    uint32_t    elem_cnt;   /* out */
+    uint32_t    elem_missed;    /* out */
+    uint64_t    val[0];     /* out */
+};
+
+struct btrfs_ioctl_ino_path_args {
+    uint64_t                inum;       /* in */
+    uint64_t                size;       /* in */
+    uint64_t                reserved[4];
+    /* struct btrfs_data_container  *fspath;       out */
+    uint64_t                fspath;     /* out */
+};
+
 
 struct btrfs_file_extent_item {
     /*
@@ -179,6 +197,7 @@ struct btrfs_dir_item {
 uint64_t btrfs_stack_file_extent_generation(struct btrfs_file_extent_item *s);
 uint64_t btrfs_stack_inode_generation(struct btrfs_inode_item *s);
 uint64_t btrfs_stack_inode_size(struct btrfs_inode_item *s);
+uint32_t btrfs_stack_inode_mode(struct btrfs_inode_item *s);
 uint64_t btrfs_stack_inode_ref_name_len(struct btrfs_inode_ref *s);
 uint64_t btrfs_stack_dir_name_len(struct btrfs_dir_item *s);
 """)
@@ -202,6 +221,9 @@ def ino_resolve(volume_fd, ino):
     Requires a search.
     Conceptually broken because of files with multiple hardlinks.
     btrfs does keep track of a preferred name for inodes though.
+
+    There's also BTRFS_IOC_INO_LOOKUP (similarly broken)
+    and BTRFS_IOC_INO_PATHS (currently using it).
     """
 
     args = ffi.new('struct btrfs_ioctl_search_args *')
@@ -234,6 +256,28 @@ def name_of_inode_ref(ref):
 def name_of_dir_item(item):
     namelen = lib.btrfs_stack_dir_name_len(item)
     return ffi.string(ffi.cast('char*', item + 1), namelen)
+
+
+def lookup_ino_paths(volume_fd, ino):
+    # This ioctl requires root
+    args = ffi.new('struct btrfs_ioctl_ino_path_args*')
+    args_buffer = ffi.buffer(args)
+    args.fspath = ffi.cast('uint64_t', ffi.new('char[4096]'))
+    args.size = 4096
+    args.inum = ino
+
+    fcntl.ioctl(volume_fd, lib.BTRFS_IOC_INO_PATHS, args_buffer)
+    data_container = ffi.cast('struct btrfs_data_container *', args.fspath)
+    if data_container.bytes_missing != 0 or data_container.elem_missed != 0:
+        raise NotImplementedError  # TODO realloc fspath above
+
+    base = ffi.cast('char*', data_container.val)
+    offsets = ffi.cast('uint64_t*', data_container.val)
+
+    for i_path in xrange(data_container.elem_cnt):
+        ptr = base + offsets[i_path]
+        path = ffi.string(ptr)
+        yield path
 
 
 class FindError(Exception):
