@@ -82,7 +82,8 @@ class MiniHash(Base):
         # Won't help with things like zeroed or sparse files.
         # The mini_hash for those is 0x10000001
         rfile.seek(int(self.ias.size * .3))
-        self.mini_hash = adler32(rfile.read(4096))
+        # bitops to make unsigned, for better readability
+        self.mini_hash = adler32(rfile.read(4096)) & 0xffffffff
 
 
 META = Base.metadata

@@ -167,7 +167,7 @@ def track_updated_files(sess, volume_fd, results_file):
         inodes = map(int, inodes.split(','))
         results_file.write(
             'dupe candidates for size %d and mini_hash %x\n'
-            % (size, mini_hash & 0xffffffff))
+            % (size, mini_hash))
         for inode in inodes:
             paths = list(lookup_ino_paths(volume_fd, inode))
             results_file.write('inode %d paths %s\n' % (inode, paths))
