@@ -268,12 +268,16 @@ def lookup_ino_paths(volume_fd, ino):
     # This ioctl requires root
     args = ffi.new('struct btrfs_ioctl_ino_path_args*')
     args_buffer = ffi.buffer(args)
-    args.fspath = ffi.cast('uint64_t', ffi.new('char[4096]'))
+
+    # keep a reference around; args.fspath isn't a reference after the cast
+    fspath = ffi.new('char[4096]')
+
+    args.fspath = ffi.cast('uint64_t', fspath)
     args.size = 4096
     args.inum = ino
 
     fcntl.ioctl(volume_fd, lib.BTRFS_IOC_INO_PATHS, args_buffer)
-    data_container = ffi.cast('struct btrfs_data_container *', args.fspath)
+    data_container = ffi.cast('struct btrfs_data_container *', fspath)
     if data_container.bytes_missing != 0 or data_container.elem_missed != 0:
         raise NotImplementedError  # TODO realloc fspath above
 
