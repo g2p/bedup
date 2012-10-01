@@ -112,7 +112,7 @@ def track_updated_files(sess, volume_fd, results_file):
         results_file.write('dupe candidates for size %d\n' % size)
         for ino in inodes:
             paths = list(lookup_ino_paths(volume_fd, ino))
-            results_file.write('ino %d paths %s' % (ino, paths))
+            results_file.write('ino %d paths %s\n' % (ino, paths))
 
 
 parser = argparse.ArgumentParser(usage=__doc__.strip())
