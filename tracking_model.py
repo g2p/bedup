@@ -3,7 +3,7 @@ from sqlalchemy.orm import relationship
 from sqlalchemy.orm.exc import NoResultFound
 from sqlalchemy.sql import and_
 from sqlalchemy.ext.declarative import declarative_base, declared_attr
-from sqlalchemy.types import (UnicodeText, Integer, Binary)
+from sqlalchemy.types import (UnicodeText, Integer, SmallInteger, Binary)
 from sqlalchemy.util import generic_repr
 from sqlalchemy import (
     Column, ForeignKey, UniqueConstraint)
@@ -55,7 +55,7 @@ Base = declarative_base(cls=SuperBase)
 
 
 class Filesystem(Base):
-    id = Column(Integer, primary_key=True)
+    id = Column(SmallInteger, primary_key=True)
     __table_args__ = dict(sqlite_autoincrement=True)
     uuid = Column(Binary(16), unique=True, nullable=False)
     last_tracked_generation = Column(Integer, nullable=False)
