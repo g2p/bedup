@@ -21,13 +21,14 @@ import yaml
 from btrfs import lookup_ino_paths, get_fsid
 from sqlalchemy import func
 from sqlalchemy.orm import sessionmaker
-from tracking_model import InodeAndSize
+from tracking_model import Filesystem, InodeAndSize, get_or_create
 
 
-def find_new(volume_fd, min_generation, results_file):
+def find_new(sess, volume_fd, min_generation, results_file):
     from btrfs import ffi, u64_max
 
-    print get_fsid(volume_fd)
+    fs, fs_created = get_or_create(
+        sess, Filesystem, uuid=get_fsid(volume_fd).bytes)
 
     args = ffi.new('struct btrfs_ioctl_search_args *')
     args_buffer = ffi.buffer(args)
@@ -75,16 +76,18 @@ def find_new(volume_fd, min_generation, results_file):
                     continue
                 if not stat.S_ISREG(mode):
                     continue
-                ias, created = tracking_model.get_or_create(
+                inode = sh.objectid
+                ias, created = get_or_create(
                     sess,
                     InodeAndSize,
-                    inode=sh.objectid,
+                    fs=fs,
+                    inode=inode,
                     size=size)
-                names = list(lookup_ino_paths(volume_fd, sh.objectid))
+                names = list(lookup_ino_paths(volume_fd, inode))
                 results_file.write(
                     'item type %d ino %d len %d'
                     ' gen0 %d gen1 %d size %d names %r mode %o\n' % (
-                        sh.type, sh.objectid, sh.len,
+                        sh.type, inode, sh.len,
                         sh.transid, found_gen, size, names,
                         mode))
         sk.min_objectid = sh.objectid
@@ -123,5 +126,5 @@ generation = 0
 SIZE_CUTOFF = 10
 
 # May raise IOError, let Python print it
-find_new(volume_fd, generation, sys.stdout)
+find_new(sess, volume_fd, generation, sys.stdout)
 
