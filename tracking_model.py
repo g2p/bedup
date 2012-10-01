@@ -6,6 +6,7 @@ from sqlalchemy import (
     UnicodeText, Integer, Column, ForeignKey, UniqueConstraint)
 
 
+# XXX I actually need create_or_update here
 def get_or_create(sess, model, **kwargs):
     try:
         return sess.query(model).filter_by(**kwargs).one(), False

@@ -18,7 +18,7 @@ import tracking_model
 import xdg.BaseDirectory  # pyxdg, apt:python-xdg
 import yaml
 
-from btrfs import lookup_ino_paths
+from btrfs import lookup_ino_paths, get_fsid
 from sqlalchemy import func
 from sqlalchemy.orm import sessionmaker
 from tracking_model import InodeAndSize
@@ -26,6 +26,8 @@ from tracking_model import InodeAndSize
 
 def find_new(volume_fd, min_generation, results_file):
     from btrfs import ffi, u64_max
+
+    print get_fsid(volume_fd)
 
     args = ffi.new('struct btrfs_ioctl_search_args *')
     args_buffer = ffi.buffer(args)
@@ -91,6 +93,7 @@ def find_new(volume_fd, min_generation, results_file):
 
         sk.min_offset += 1
     sess.commit()
+
     for (size, inodes) in sess.query(
         InodeAndSize.size, func.group_concat(InodeAndSize.inode)
     ).group_by(InodeAndSize.size).having(func.count(InodeAndSize.inode) > 1):

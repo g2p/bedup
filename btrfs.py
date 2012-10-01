@@ -2,6 +2,7 @@
 
 import cffi
 import fcntl
+import uuid
 
 
 from os import getcwd  # XXX
@@ -14,6 +15,9 @@ ffi.cdef("""
 
 #define BTRFS_IOC_TREE_SEARCH ...
 #define BTRFS_IOC_INO_PATHS ...
+#define BTRFS_IOC_FS_INFO ...
+
+#define BTRFS_FSID_SIZE ...
 
 struct btrfs_ioctl_search_key {
     /* possibly the root of the search
@@ -80,9 +84,16 @@ struct btrfs_data_container {
 struct btrfs_ioctl_ino_path_args {
     uint64_t                inum;       /* in */
     uint64_t                size;       /* in */
-    uint64_t                reserved[4];
     /* struct btrfs_data_container  *fspath;       out */
     uint64_t                fspath;     /* out */
+    ...; // reserved/padding
+};
+
+struct btrfs_ioctl_fs_info_args {
+    uint64_t max_id;                /* max device id; out */
+    uint64_t num_devices;           /* out */
+    uint8_t fsid[16];      /* BTRFS_FSID_SIZE == 16; out */
+    ...; // reserved/padding
 };
 
 
@@ -159,16 +170,11 @@ struct btrfs_inode_item {
     /* modification sequence number for NFS */
     uint64_t sequence;
 
-    /*
-     * a little future expansion, for more than this we can
-     * just grow the inode item and version it
-     */
-    uint64_t reserved[4];
     struct btrfs_timespec atime;
     struct btrfs_timespec ctime;
     struct btrfs_timespec mtime;
     struct btrfs_timespec otime;
-    ...;
+    ...; // reserved/padding
 };
 
 struct btrfs_inode_ref {
@@ -278,6 +284,13 @@ def lookup_ino_paths(volume_fd, ino):
         ptr = base + offsets[i_path]
         path = ffi.string(ptr)
         yield path
+
+
+def get_fsid(volume_fd):
+    args = ffi.new('struct btrfs_ioctl_fs_info_args *')
+    args_buffer = ffi.buffer(args)
+    fcntl.ioctl(volume_fd, lib.BTRFS_IOC_FS_INFO, args_buffer)
+    return uuid.UUID(bytes=ffi.buffer(args.fsid))
 
 
 class FindError(Exception):
