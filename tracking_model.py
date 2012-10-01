@@ -80,8 +80,7 @@ class MiniHash(Base):
     def update_from_file(self, rfile):
         # A very cheap, very partial hash for quick disambiguation
         # Won't help with things like zeroed or sparse files.
-        import sys
-        sys.stderr.write('inode %d fs_id %d\n' % (self.inode, self.fs_id))
+        # The mini_hash for those is 0x10000001
         rfile.seek(int(self.ias.size * .3))
         self.mini_hash = adler32(rfile.read(4096))
 

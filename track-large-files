@@ -118,7 +118,7 @@ def track_updated_files(sess, volume_fd, results_file):
         # not without doing some tracking of directory modifications to poke
         # updated directories to find removed elements.
         inodes = map(int, inodes.split(','))
-        results_file.write('dupe candidates for size %d\n' % size)
+        #results_file.write('dupe candidates for size %d\n' % size)
         for inode in inodes:
             ias = sess.query(InodeAndSize).filter_by(fs=fs, inode=inode).one()
             mini_hash, mh_created = get_or_create(
@@ -149,10 +149,10 @@ def track_updated_files(sess, volume_fd, results_file):
                 continue
             rfile = fopenat(volume_fd, paths[0])
             mini_hash.update_from_file(rfile)
-            results_file.write('inode %d paths %s\n' % (inode, paths))
+            #results_file.write('inode %d paths %s\n' % (inode, paths))
     sess.commit()
 
-    for (mh, size, inodes) in sess.query(
+    for (mini_hash, size, inodes) in sess.query(
         MiniHash.mini_hash,
         InodeAndSize.size,
         func.group_concat(MiniHash.inode)
@@ -166,8 +166,8 @@ def track_updated_files(sess, volume_fd, results_file):
     ).having(func.count(InodeAndSize.inode) > 1):
         inodes = map(int, inodes.split(','))
         results_file.write(
-            'dupe candidates (pass 2) for size %d and mini_hash %d\n'
-            % (size, mh))
+            'dupe candidates for size %d and mini_hash %x\n'
+            % (size, mini_hash & 0xffffffff))
         for inode in inodes:
             paths = list(lookup_ino_paths(volume_fd, inode))
             results_file.write('inode %d paths %s\n' % (inode, paths))
