@@ -35,7 +35,7 @@ def track_updated_files(sess, volume_fd, results_file):
 
     min_generation = fs.last_tracked_generation
     top_generation = get_root_generation(volume_fd)
-    sys.stderr.write('generations %d %d\n' % (min_generation, top_generation))
+    results_file.write('generations %d %d\n' % (min_generation, top_generation))
 
     args = ffi.new('struct btrfs_ioctl_search_args *')
     args_buffer = ffi.buffer(args)
@@ -109,10 +109,10 @@ def track_updated_files(sess, volume_fd, results_file):
         InodeAndSize.size, func.group_concat(InodeAndSize.inode)
     ).group_by(InodeAndSize.size).having(func.count(InodeAndSize.inode) > 1):
         inodes = map(int, inodes.split(','))
-        print size
+        results_file.write('dupe candidates for size %d\n' % size)
         for ino in inodes:
-            for path in lookup_ino_paths(volume_fd, ino):
-                print(ino, path)
+            paths = list(lookup_ino_paths(volume_fd, ino))
+            results_file.write('ino %d paths %s' % (ino, paths))
 
 
 parser = argparse.ArgumentParser(usage=__doc__.strip())
