@@ -283,39 +283,6 @@ lib = ffi.verify('''
 u64_max = ffi.cast('uint64_t', -1)
 
 
-def ino_resolve(volume_fd, ino):
-    """
-    A straightforward port of ino_resolve in btrfs-progs find-new.
-
-    Requires a search.
-    Conceptually broken because of files with multiple hardlinks.
-    btrfs does keep track of a preferred name for inodes though.
-
-    There's also BTRFS_IOC_INO_LOOKUP (similarly broken)
-    and BTRFS_IOC_INO_PATHS (currently using it).
-    """
-
-    args = ffi.new('struct btrfs_ioctl_search_args *')
-    sk = args.key
-
-    sk.min_objectid = sk.max_objectid = ino
-    sk.min_type = sk.max_type = lib.BTRFS_INODE_REF_KEY
-    sk.max_offset = u64_max
-    sk.max_transid = u64_max
-    sk.nr_items = 1
-
-    fcntl.ioctl(volume_fd, lib.BTRFS_IOC_TREE_SEARCH, ffi.buffer(args))
-    if sk.nr_items == 0:
-        return
-
-    sh = ffi.cast(
-        'struct btrfs_ioctl_search_header *', args.buf)
-    assert sh.type == lib.BTRFS_INODE_REF_KEY
-    ref = ffi.cast(
-        'struct btrfs_inode_ref *', sh + 1)
-    return name_of_inode_ref(ref)
-
-
 def name_of_inode_ref(ref):
     namelen = lib.btrfs_stack_inode_ref_name_len(ref)
     return ffi.string(ffi.cast('char*', ref + 1), namelen)
