@@ -130,7 +130,8 @@ sess = Session()
 tracking_model.META.create_all(engine)
 
 volume_fd = os.open(opts.volume, os.O_DIRECTORY)
-SIZE_CUTOFF = 10
+# 32MiB
+SIZE_CUTOFF = 32*1024**2
 
 # May raise IOError, let Python print it
 track_updated_files(sess, volume_fd, sys.stdout)
