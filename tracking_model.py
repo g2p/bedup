@@ -58,7 +58,10 @@ Base = declarative_base(cls=SuperBase)
 
 
 class Filesystem(Base):
-    id = Column(SmallInteger, primary_key=True)
+    # SmallInteger might be preferrable here,
+    # but would require reimplementing an autoincrement
+    # sequence outside of sqlite
+    id = Column(Integer, primary_key=True)
     __table_args__ = dict(sqlite_autoincrement=True)
     uuid = Column(Binary(16), unique=True, nullable=False)
     last_tracked_generation = Column(Integer, nullable=False)
