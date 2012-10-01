@@ -24,7 +24,7 @@ from sqlalchemy.orm import sessionmaker
 from tracking_model import Filesystem, InodeAndSize, get_or_create
 
 
-def find_new(sess, volume_fd, results_file):
+def track_updated_files(sess, volume_fd, results_file):
     from btrfs import ffi, u64_max
 
     fs, fs_created = get_or_create(
@@ -133,5 +133,5 @@ volume_fd = os.open(opts.volume, os.O_DIRECTORY)
 SIZE_CUTOFF = 10
 
 # May raise IOError, let Python print it
-find_new(sess, volume_fd, sys.stdout)
+track_updated_files(sess, volume_fd, sys.stdout)
 
