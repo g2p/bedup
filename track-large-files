@@ -112,6 +112,10 @@ def track_updated_files(sess, volume_fd, results_file):
     ).filter_by(
         fs=fs
     ).group_by(InodeAndSize.size).having(func.count(InodeAndSize.inode) > 1):
+        # XXX Need to cope with deleted inodes.
+        # We cannot find them in the search-new pass,
+        # not without doing some tracking of directory modifications to poke
+        # updated directories to find removed elements.
         inodes = map(int, inodes.split(','))
         results_file.write('dupe candidates for size %d\n' % size)
         for inode in inodes:
