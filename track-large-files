@@ -9,6 +9,7 @@ Maintains a size -> inode lookup table.
 """
 
 import argparse
+import errno
 import fcntl
 import os
 import sqlalchemy
@@ -138,7 +139,14 @@ def track_updated_files(sess, volume_fd, results_file):
             # I don't know enough about how inode transaction numbers
             # are updated (as opposed to extent updates)
             # to be able to actually cache the result
-            paths = list(lookup_ino_paths(volume_fd, inode))
+            try:
+                paths = list(lookup_ino_paths(volume_fd, inode))
+            except IOError, e:
+                if e.errno != errno.ENOENT:
+                    raise
+                # We have a stale record for a removed inode
+                sess.delete(ias)
+                continue
             rfile = fopenat(volume_fd, paths[0])
             mini_hash.update_from_file(rfile)
             results_file.write('inode %d paths %s\n' % (inode, paths))
