@@ -15,9 +15,11 @@ ffi.cdef("""
 
 #define BTRFS_IOC_TREE_SEARCH ...
 #define BTRFS_IOC_INO_PATHS ...
+#define BTRFS_IOC_INO_LOOKUP ...
 #define BTRFS_IOC_FS_INFO ...
 
 #define BTRFS_FSID_SIZE ...
+#define BTRFS_UUID_SIZE ...
 
 struct btrfs_ioctl_search_key {
     /* possibly the root of the search
@@ -57,6 +59,10 @@ struct btrfs_ioctl_search_key {
 #define BTRFS_INODE_ITEM_KEY ...
 #define BTRFS_DIR_ITEM_KEY ...
 #define BTRFS_DIR_INDEX_KEY ...
+#define BTRFS_ROOT_ITEM_KEY ...
+
+#define BTRFS_FIRST_FREE_OBJECTID ...
+#define BTRFS_ROOT_TREE_OBJECTID ...
 
 struct btrfs_ioctl_search_header {
     uint64_t transid;
@@ -94,6 +100,16 @@ struct btrfs_ioctl_fs_info_args {
     uint64_t num_devices;           /* out */
     uint8_t fsid[16];      /* BTRFS_FSID_SIZE == 16; out */
     ...; // reserved/padding
+};
+
+
+struct btrfs_ioctl_ino_lookup_args {
+    uint64_t treeid;
+    uint64_t objectid;
+
+    // pads to 4k; don't use this ioctl for path lookup, it's kind of broken.
+    //char name[BTRFS_INO_LOOKUP_PATH_MAX];
+    ...;
 };
 
 
@@ -177,6 +193,53 @@ struct btrfs_inode_item {
     ...; // reserved/padding
 };
 
+struct btrfs_root_item {
+// XXX CFFI and endianness: ???
+    struct btrfs_inode_item inode;
+    uint64_t generation;
+    uint64_t root_dirid;
+    uint64_t bytenr;
+    uint64_t byte_limit;
+    uint64_t bytes_used;
+    uint64_t last_snapshot;
+    uint64_t flags;
+    uint32_t refs;
+    struct btrfs_disk_key drop_progress;
+    uint8_t drop_level;
+    uint8_t level;
+
+    /*
+     * The following fields appear after subvol_uuids+subvol_times
+     * were introduced.
+     */
+
+    /*
+     * This generation number is used to test if the new fields are valid
+     * and up to date while reading the root item. Everytime the root item
+     * is written out, the "generation" field is copied into this field. If
+     * anyone ever mounted the fs with an older kernel, we will have
+     * mismatching generation values here and thus must invalidate the
+     * new fields. See btrfs_update_root and btrfs_find_last_root for
+     * details.
+     * the offset of generation_v2 is also used as the start for the memset
+     * when invalidating the fields.
+     */
+    uint64_t generation_v2;
+    //uint8_t uuid[BTRFS_UUID_SIZE]; // BTRFS_UUID_SIZE == 16
+    //uint8_t parent_uuid[BTRFS_UUID_SIZE];
+    //uint8_t received_uuid[BTRFS_UUID_SIZE];
+    uint64_t ctransid; /* updated when an inode changes */
+    uint64_t otransid; /* trans when created */
+    uint64_t stransid; /* trans when sent. non-zero for received subvol */
+    uint64_t rtransid; /* trans when received. non-zero for received subvol */
+    struct btrfs_timespec ctime;
+    struct btrfs_timespec otime;
+    struct btrfs_timespec stime;
+    struct btrfs_timespec rtime;
+    ...; // reserved and packing
+};
+
+
 struct btrfs_inode_ref {
     uint64_t index;
     uint16_t name_len;
@@ -206,6 +269,7 @@ uint64_t btrfs_stack_inode_size(struct btrfs_inode_item *s);
 uint32_t btrfs_stack_inode_mode(struct btrfs_inode_item *s);
 uint64_t btrfs_stack_inode_ref_name_len(struct btrfs_inode_ref *s);
 uint64_t btrfs_stack_dir_name_len(struct btrfs_dir_item *s);
+uint64_t btrfs_root_generation(struct btrfs_root_item *s);
 """)
 
 
@@ -233,7 +297,6 @@ def ino_resolve(volume_fd, ino):
     """
 
     args = ffi.new('struct btrfs_ioctl_search_args *')
-    args_buffer = ffi.buffer(args)
     sk = args.key
 
     sk.min_objectid = sk.max_objectid = ino
@@ -242,7 +305,7 @@ def ino_resolve(volume_fd, ino):
     sk.max_transid = u64_max
     sk.nr_items = 1
 
-    fcntl.ioctl(volume_fd, lib.BTRFS_IOC_TREE_SEARCH, args_buffer)
+    fcntl.ioctl(volume_fd, lib.BTRFS_IOC_TREE_SEARCH, ffi.buffer(args))
     if sk.nr_items == 0:
         return
 
@@ -267,7 +330,6 @@ def name_of_dir_item(item):
 def lookup_ino_paths(volume_fd, ino):
     # This ioctl requires root
     args = ffi.new('struct btrfs_ioctl_ino_path_args*')
-    args_buffer = ffi.buffer(args)
 
     # keep a reference around; args.fspath isn't a reference after the cast
     fspath = ffi.new('char[4096]')
@@ -276,7 +338,7 @@ def lookup_ino_paths(volume_fd, ino):
     args.size = 4096
     args.inum = ino
 
-    fcntl.ioctl(volume_fd, lib.BTRFS_IOC_INO_PATHS, args_buffer)
+    fcntl.ioctl(volume_fd, lib.BTRFS_IOC_INO_PATHS, ffi.buffer(args))
     data_container = ffi.cast('struct btrfs_data_container *', fspath)
     if data_container.bytes_missing != 0 or data_container.elem_missed != 0:
         raise NotImplementedError  # TODO realloc fspath above
@@ -292,9 +354,63 @@ def lookup_ino_paths(volume_fd, ino):
 
 def get_fsid(volume_fd):
     args = ffi.new('struct btrfs_ioctl_fs_info_args *')
-    args_buffer = ffi.buffer(args)
-    fcntl.ioctl(volume_fd, lib.BTRFS_IOC_FS_INFO, args_buffer)
+    fcntl.ioctl(volume_fd, lib.BTRFS_IOC_FS_INFO, ffi.buffer(args))
     return uuid.UUID(bytes=ffi.buffer(args.fsid))
+
+
+def get_root_id(volume_fd):
+    args = ffi.new('struct btrfs_ioctl_ino_lookup_args *')
+    # the inode of the root directory
+    args.objectid = lib.BTRFS_FIRST_FREE_OBJECTID
+    fcntl.ioctl(volume_fd, lib.BTRFS_IOC_INO_LOOKUP, ffi.buffer(args))
+    return args.treeid
+
+
+def get_root_generation(volume_fd):
+    # Adapted from find_root_gen in btrfs-list.c
+    # XXX I'm iffy about the search, we may not be using the most
+    # recent snapshot, don't want to pick up a newer generation from
+    # a different snapshot.
+    treeid = get_root_id(volume_fd)
+    max_found = 0
+
+    args = ffi.new('struct btrfs_ioctl_search_args *')
+    args_buffer = ffi.buffer(args)
+    sk = args.key
+
+    sk.tree_id = lib.BTRFS_ROOT_TREE_OBJECTID  # the tree of roots
+    sk.min_objectid = sk.max_objectid = treeid
+    sk.min_type = sk.max_type = lib.BTRFS_ROOT_ITEM_KEY
+    sk.max_offset = u64_max
+    sk.max_transid = u64_max
+
+    while True:
+        sk.nr_items = 4096
+
+        fcntl.ioctl(
+            volume_fd, lib.BTRFS_IOC_TREE_SEARCH, args_buffer)
+        if sk.nr_items == 0:
+            break
+
+        offset = 0
+        for item_id in xrange(sk.nr_items):
+            sh = ffi.cast(
+                'struct btrfs_ioctl_search_header *', args.buf + offset)
+            offset += ffi.sizeof('struct btrfs_ioctl_search_header') + sh.len
+            assert sh.objectid == treeid
+            assert sh.type == lib.BTRFS_ROOT_ITEM_KEY
+            item = ffi.cast(
+                'struct btrfs_root_item *', sh + 1)
+            max_found = max(max_found, lib.btrfs_root_generation(item))
+
+        if sk.min_type != lib.BTRFS_ROOT_ITEM_KEY:
+            break
+        if sk.min_objectid != treeid:
+            break
+        sk.min_offset = sh.offset + 1
+
+    assert max_found > 0
+    return max_found
 
 
 class FindError(Exception):
@@ -343,8 +459,6 @@ def find_new(volume_fd, min_generation, results_file):
                     'struct btrfs_file_extent_item *', sh + 1)
                 found_gen = lib.btrfs_stack_file_extent_generation(
                     item)
-                # XXX How do we name a hardlinked file?
-                #name = ino_resolve(volume_fd, sh.objectid)
                 results_file.write(
                     'item type %d ino %d len %d gen0 %d gen1 %d\n' % (
                         sh.type, sh.objectid, sh.len, sh.transid, found_gen))
@@ -354,7 +468,6 @@ def find_new(volume_fd, min_generation, results_file):
                 item = ffi.cast(
                     'struct btrfs_inode_item *', sh + 1)
                 found_gen = lib.btrfs_stack_inode_generation(item)
-                #name = ino_resolve(volume_fd, sh.objectid)
                 results_file.write(
                     'item type %d ino %d len %d gen0 %d gen1 %d\n' % (
                         sh.type, sh.objectid, sh.len, sh.transid, found_gen))

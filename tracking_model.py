@@ -37,13 +37,14 @@ Base = declarative_base(cls=SuperBase)
 class Filesystem(Base):
     id = Column(Integer, primary_key=True)
     __table_args__ = dict(sqlite_autoincrement=True)
-    uuid = Column(Binary(16), unique=True)
+    uuid = Column(Binary(16), unique=True, nullable=False)
+    last_tracked_generation = Column(Integer, nullable=False)
 
 
 class InodeAndSize(Base):
     fs_id, fs = FK(Filesystem.id, primary_key=True)
     inode = Column(Integer, primary_key=True)
-    size = Column(Integer, index=True)
+    size = Column(Integer, index=True, nullable=False)
 
     def __repr__(self):
         return 'InodeAndSize(inode=%r, size=%r)' % (self.inode, self.size)

@@ -18,17 +18,24 @@ import tracking_model
 import xdg.BaseDirectory  # pyxdg, apt:python-xdg
 import yaml
 
-from btrfs import lookup_ino_paths, get_fsid
+from btrfs import lookup_ino_paths, get_fsid, get_root_generation
 from sqlalchemy import func
 from sqlalchemy.orm import sessionmaker
 from tracking_model import Filesystem, InodeAndSize, get_or_create
 
 
-def find_new(sess, volume_fd, min_generation, results_file):
+def find_new(sess, volume_fd, results_file):
     from btrfs import ffi, u64_max
 
     fs, fs_created = get_or_create(
-        sess, Filesystem, uuid=get_fsid(volume_fd).bytes)
+        sess, Filesystem,
+        uuid=get_fsid(volume_fd).bytes)
+    if fs_created:
+        fs.last_tracked_generation = 0
+
+    min_generation = fs.last_tracked_generation
+    top_generation = get_root_generation(volume_fd)
+    sys.stderr.write('generations %d %d\n' % (min_generation, top_generation))
 
     args = ffi.new('struct btrfs_ioctl_search_args *')
     args_buffer = ffi.buffer(args)
@@ -95,6 +102,7 @@ def find_new(sess, volume_fd, min_generation, results_file):
         sk.min_offset = sh.offset
 
         sk.min_offset += 1
+    fs.last_tracked_generation = top_generation
     sess.commit()
 
     for (size, inodes) in sess.query(
@@ -122,9 +130,8 @@ sess = Session()
 tracking_model.META.create_all(engine)
 
 volume_fd = os.open(opts.volume, os.O_DIRECTORY)
-generation = 0
 SIZE_CUTOFF = 10
 
 # May raise IOError, let Python print it
-find_new(sess, volume_fd, generation, sys.stdout)
+find_new(sess, volume_fd, sys.stdout)
 
