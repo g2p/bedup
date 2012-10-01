@@ -19,9 +19,10 @@ import xdg.BaseDirectory  # pyxdg, apt:python-xdg
 import yaml
 
 from btrfs import lookup_ino_paths, get_fsid, get_root_generation
+from openat import fopenat
 from sqlalchemy import func
 from sqlalchemy.orm import sessionmaker
-from tracking_model import Filesystem, InodeAndSize, get_or_create
+from tracking_model import Filesystem, InodeAndSize, MiniHash, get_or_create
 
 
 def track_updated_files(sess, volume_fd, results_file):
@@ -92,7 +93,7 @@ def track_updated_files(sess, volume_fd, results_file):
                     size=size)
                 names = list(lookup_ino_paths(volume_fd, inode))
                 results_file.write(
-                    'item type %d ino %d len %d'
+                    'item type %d inode %d len %d'
                     ' gen0 %d gen1 %d size %d names %r mode %o\n' % (
                         sh.type, inode, sh.len,
                         sh.transid, found_gen, size, names,
@@ -106,13 +107,58 @@ def track_updated_files(sess, volume_fd, results_file):
     sess.commit()
 
     for (size, inodes) in sess.query(
-        InodeAndSize.size, func.group_concat(InodeAndSize.inode)
+        InodeAndSize.size,
+        func.group_concat(InodeAndSize.inode)
+    ).filter_by(
+        fs=fs
     ).group_by(InodeAndSize.size).having(func.count(InodeAndSize.inode) > 1):
         inodes = map(int, inodes.split(','))
         results_file.write('dupe candidates for size %d\n' % size)
-        for ino in inodes:
-            paths = list(lookup_ino_paths(volume_fd, ino))
-            results_file.write('ino %d paths %s\n' % (ino, paths))
+        for inode in inodes:
+            ias = sess.query(InodeAndSize).filter_by(fs=fs, inode=inode).one()
+            mini_hash, mh_created = get_or_create(
+                sess, MiniHash, fs_id=ias.fs_id, inode=ias.inode)
+
+            assert mini_hash.inode == ias.inode
+            assert mini_hash.fs_id == ias.fs_id
+
+            # XXX cheat for now
+            mini_hash.ias = ias
+            # XXX Fails, is FK2 broken?
+            assert mini_hash.ias is not None, (
+                MiniHash.ias, mini_hash.ias, ias, mh_created)
+            assert mini_hash.ias == ias, (
+                MiniHash.ias, mini_hash.ias, ias, mh_created)
+
+            # rehash everytime for now
+            # I don't know enough about how inode transaction numbers
+            # are updated (as opposed to extent updates)
+            # to be able to actually cache the result
+            paths = list(lookup_ino_paths(volume_fd, inode))
+            rfile = fopenat(volume_fd, paths[0])
+            mini_hash.update_from_file(rfile)
+            results_file.write('inode %d paths %s\n' % (inode, paths))
+    sess.commit()
+
+    for (mh, size, inodes) in sess.query(
+        MiniHash.mini_hash,
+        InodeAndSize.size,
+        func.group_concat(MiniHash.inode)
+    ).filter(
+        InodeAndSize.inode==MiniHash.inode,
+        InodeAndSize.fs_id==MiniHash.fs_id,
+        InodeAndSize.fs==fs,
+    ).group_by(
+        InodeAndSize.size,
+        MiniHash.mini_hash
+    ).having(func.count(InodeAndSize.inode) > 1):
+        inodes = map(int, inodes.split(','))
+        results_file.write(
+            'dupe candidates (pass 2) for size %d and mini_hash %d\n'
+            % (size, mh))
+        for inode in inodes:
+            paths = list(lookup_ino_paths(volume_fd, inode))
+            results_file.write('inode %d paths %s\n' % (inode, paths))
 
 
 parser = argparse.ArgumentParser(usage=__doc__.strip())

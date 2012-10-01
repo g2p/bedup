@@ -7,6 +7,7 @@ from sqlalchemy.types import (UnicodeText, Integer, SmallInteger, Binary)
 from sqlalchemy.util import generic_repr
 from sqlalchemy import (
     Column, ForeignKey, UniqueConstraint)
+from zlib import adler32
 
 
 def FK(cattr, primary_key=False, backref=None, nullable=False):
@@ -33,7 +34,9 @@ def FK2(entity, primary_key=False, backref=None, nullable=False):
         col1==col2
         for (col1, col2) in zip(entity.__table__.primary_key, fk_cols))
     rel = relationship(
-        entity, backref=backref, primaryjoin=and_(*join_conditions))
+        entity, backref=backref, uselist=False,
+        primaryjoin=and_(*join_conditions),
+    )
     return fk_cols, rel
 
 
@@ -72,7 +75,16 @@ class InodeAndSize(Base):
 
 class MiniHash(Base):
     (fs_id, inode), ias = FK2(InodeAndSize, primary_key=True)
-    mini_hash = Column(Binary, nullable=False)
+    mini_hash = Column(Integer, nullable=False)
+
+    def update_from_file(self, rfile):
+        # A very cheap, very partial hash for quick disambiguation
+        # Won't help with things like zeroed or sparse files.
+        import sys
+        sys.stderr.write('inode %d fs_id %d\n' % (self.inode, self.fs_id))
+        rfile.seek(int(self.ias.size * .3))
+        self.mini_hash = adler32(rfile.read(4096))
+
 
 META = Base.metadata
 
