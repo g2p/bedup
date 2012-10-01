@@ -112,7 +112,11 @@ def track_updated_files(sess, volume_fd, results_file):
         func.group_concat(InodeAndSize.inode)
     ).filter_by(
         fs=fs
-    ).group_by(InodeAndSize.size).having(func.count(InodeAndSize.inode) > 1):
+    ).group_by(
+        InodeAndSize.size
+    ).having(
+        func.count(InodeAndSize.inode) > 1
+    ):
         # XXX Need to cope with deleted inodes.
         # We cannot find them in the search-new pass,
         # not without doing some tracking of directory modifications to poke
@@ -145,6 +149,11 @@ def track_updated_files(sess, volume_fd, results_file):
                 if e.errno != errno.ENOENT:
                     raise
                 # We have a stale record for a removed inode
+                # XXX If an inode number is reused and the second instance is
+                # below the size cutoff, we won't update the InodeAndSize
+                # record and we won't get an IOError to notify us either.
+                # Inode reuse does happen (with and without inode_cache),
+                # so this branch isn't enough to rid us of all stale entries.
                 sess.delete(ias)
                 continue
             rfile = fopenat(volume_fd, paths[0])
@@ -163,7 +172,9 @@ def track_updated_files(sess, volume_fd, results_file):
     ).group_by(
         InodeAndSize.size,
         MiniHash.mini_hash
-    ).having(func.count(InodeAndSize.inode) > 1):
+    ).having(
+        func.count(InodeAndSize.inode) > 1
+    ):
         inodes = map(int, inodes.split(','))
         results_file.write(
             'dupe candidates for size %d and mini_hash %x\n'
@@ -171,6 +182,29 @@ def track_updated_files(sess, volume_fd, results_file):
         for inode in inodes:
             paths = list(lookup_ino_paths(volume_fd, inode))
             results_file.write('inode %d paths %s\n' % (inode, paths))
+
+    impact_q1 = sess.query(
+        (
+            (func.count(InodeAndSize.inode) - 1) * InodeAndSize.size
+        ).label('impact')
+    ).filter(
+        InodeAndSize.inode==MiniHash.inode,
+        InodeAndSize.fs_id==MiniHash.fs_id==fs.id,
+    ).group_by(
+        InodeAndSize.size,
+        MiniHash.mini_hash
+    ).having(
+        # Not strictly necessary, singletons would be *0 above anyway
+        func.count(InodeAndSize.inode) > 1
+    )
+    potential_space_gain = sum(i for (i,) in impact_q1)
+    impact_q2 = sess.query(
+        func.sum('impact')
+    ).select_from(impact_q1.subquery())
+    results_file.write('query 1 %s\n' % impact_q1)
+    results_file.write('query 2 %s\n' % impact_q2)
+    potential_space_gain_buggy = impact_q2.scalar()
+    results_file.write('Potential space gain: %d\n' % potential_space_gain)
 
 
 parser = argparse.ArgumentParser(usage=__doc__.strip())
