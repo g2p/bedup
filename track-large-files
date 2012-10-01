@@ -21,7 +21,7 @@ import yaml
 
 from btrfs import lookup_ino_paths, get_fsid, get_root_generation
 from openat import fopenat
-from sqlalchemy import func
+from sqlalchemy import func, sql
 from sqlalchemy.orm import sessionmaker
 from tracking_model import Filesystem, InodeAndSize, MiniHash, get_or_create
 
@@ -197,13 +197,13 @@ def track_updated_files(sess, volume_fd, results_file):
         # Not strictly necessary, singletons would be *0 above anyway
         func.count(InodeAndSize.inode) > 1
     )
-    potential_space_gain = sum(i for (i,) in impact_q1)
     impact_q2 = sess.query(
-        func.sum('impact')
+        func.sum(sql.literal_column('impact'))
     ).select_from(impact_q1.subquery())
-    results_file.write('query 1 %s\n' % impact_q1)
-    results_file.write('query 2 %s\n' % impact_q2)
-    potential_space_gain_buggy = impact_q2.scalar()
+    if False:
+        potential_space_gain = sum(i for (i,) in impact_q1)
+    else:
+        potential_space_gain = impact_q2.scalar()
     results_file.write('Potential space gain: %d\n' % potential_space_gain)
 
 
