@@ -3,6 +3,7 @@
 import collections
 import errno
 import glob
+import operator
 import os
 import re
 
@@ -103,8 +104,12 @@ def find_inodes_in_use(fds):
 
 
 def dedup_same_fds(source_fd, dest_fds):
-    fds = [source_fd] + dest_fds
+    return mass_dedup_fds([[source_fd] + dest_fds])
+
+
+def mass_dedup_fds(fd_sets):
     revert_immutable_fds = []
+    fds = reduce(operator.add, fd_sets)
 
     try:
         for fd in fds:
@@ -127,11 +132,15 @@ def dedup_same_fds(source_fd, dest_fds):
                 'are open for writing elsewhere',
                 in_use)
 
-        for fd in dest_fds:
-            if not cmp_fds(source_fd, fd):
-                # XXX FDs are not very descriptive
-                raise FilesDiffer(source_fd, fd)
-            clone_data(dest=fd, src=source_fd)
+        for fd_set in fd_sets:
+            source_fd = fd_set[0]
+            dest_fds = fd_set[1:]
+
+            for fd in dest_fds:
+                if not cmp_fds(source_fd, fd):
+                    # XXX FDs are not very descriptive
+                    raise FilesDiffer(source_fd, fd)
+                clone_data(dest=fd, src=source_fd)
     finally:
         for fd in revert_immutable_fds:
             editflags(fd, remove_flags=FS_IMMUTABLE_FL)
