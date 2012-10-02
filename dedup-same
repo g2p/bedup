@@ -25,9 +25,12 @@ def main():
     parser.add_argument('source', metavar='SRC', help='source file')
     parser.add_argument('dests', metavar='DEST', nargs='+', help='dest files')
     opts = parser.parse_args()
+    return doit(opts.source, opts.dests)
 
-    source_fd = os.open(opts.source, 0)
-    dest_fds = [os.open(dname, os.O_WRONLY) for dname in opts.dests]
+
+def doit(source, dests):
+    source_fd = os.open(source, 0)
+    dest_fds = [os.open(dname, os.O_WRONLY) for dname in dests]
     fds = [source_fd] + dest_fds
     revert_immutable_fds = []
 
@@ -39,9 +42,9 @@ def main():
             revert_immutable_fds.append(fd)
         # TODO: check no one else has kept writable file descriptors around.
 
-    for dest, fd in zip(opts.dests, dest_fds):
+    for dest, fd in zip(dests, dest_fds):
         # Raises an exception if the data differs
-        subprocess.check_call('cmp --quiet --'.split() + [opts.source, dest])
+        subprocess.check_call('cmp --quiet --'.split() + [source, dest])
         clone_data(dest=fd, src=source_fd)
 
     for fd in revert_immutable_fds:
