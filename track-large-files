@@ -154,6 +154,10 @@ def track_updated_files(sess, volume_fd, results_file):
                 # record and we won't get an IOError to notify us either.
                 # Inode reuse does happen (with and without inode_cache),
                 # so this branch isn't enough to rid us of all stale entries.
+                if mh_created:
+                    sess.expunge(mini_hash)
+                else:
+                    sess.delete(mini_hash)
                 sess.delete(ias)
                 continue
             rfile = fopenat(volume_fd, paths[0])
@@ -222,8 +226,12 @@ sess = Session()
 tracking_model.META.create_all(engine)
 
 volume_fd = os.open(opts.volume, os.O_DIRECTORY)
-# 32MiB
+# 32MiB, initial scan takes about 12', might gain 15837689948, sqlite takes 256k
 SIZE_CUTOFF = 32*1024**2
+# about 12' again, might gain 25807974687
+SIZE_CUTOFF = 16*1024**2
+# 13'40" (36' with a backup job running in parallel), might gain 26929240347, sqlite takes 758k
+SIZE_CUTOFF = 8*1024**2
 
 # May raise IOError, let Python print it
 track_updated_files(sess, volume_fd, sys.stdout)
