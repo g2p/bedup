@@ -133,11 +133,11 @@ def track_updated_files(sess, volume_fd, results_file):
 
             # XXX cheat for now
             mini_hash.ias = ias
-            # XXX Fails, is FK2 broken?
+            # XXX Fails on initial scans, is FK2 broken?
             assert mini_hash.ias is not None, (
-                MiniHash.ias, mini_hash.ias, ias, mh_created)
+                'ias unset', MiniHash.ias, mini_hash.ias, ias, mh_created)
             assert mini_hash.ias == ias, (
-                MiniHash.ias, mini_hash.ias, ias, mh_created)
+                'ias mismatch', MiniHash.ias, mini_hash.ias, ias, mh_created)
 
             # rehash everytime for now
             # I don't know enough about how inode transaction numbers
