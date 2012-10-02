@@ -3,10 +3,8 @@ from sqlalchemy.orm import relationship
 from sqlalchemy.orm.exc import NoResultFound
 from sqlalchemy.sql import and_
 from sqlalchemy.ext.declarative import declarative_base, declared_attr
-from sqlalchemy.types import (UnicodeText, Integer, SmallInteger, Binary)
-from sqlalchemy.util import generic_repr
-from sqlalchemy import (
-    Column, ForeignKey, UniqueConstraint)
+from sqlalchemy.types import (Integer, SmallInteger, Binary)
+from sqlalchemy import (Column, ForeignKey)
 from zlib import adler32
 
 
@@ -31,7 +29,7 @@ def FK2(entity, primary_key=False, backref=None, nullable=False):
                 nullable=nullable)
     fk_cols = list(gen_fk_cols())
     join_conditions = list(
-        col1==col2
+        col1 == col2
         for (col1, col2) in zip(entity.__table__.primary_key, fk_cols))
     rel = relationship(
         entity, backref=backref, uselist=False,

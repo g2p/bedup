@@ -1,6 +1,7 @@
 from cffi import FFI
 import os
 
+
 ffi = FFI()
 ffi.cdef('''
     #define O_RDONLY ...
@@ -9,6 +10,7 @@ ffi.cdef('''
 lib = ffi.verify('''
     #include <fcntl.h>
     ''')
+
 
 def fopenat(fd, path):
     """

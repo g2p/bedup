@@ -17,7 +17,6 @@ import stat
 import sys
 import tracking_model
 import xdg.BaseDirectory  # pyxdg, apt:python-xdg
-import yaml
 
 from btrfs import lookup_ino_paths, get_fsid, get_root_generation
 from openat import fopenat
@@ -37,7 +36,8 @@ def track_updated_files(sess, volume_fd, results_file):
 
     min_generation = fs.last_tracked_generation
     top_generation = get_root_generation(volume_fd)
-    results_file.write('generations %d %d\n' % (min_generation, top_generation))
+    results_file.write(
+        'generations %d %d\n' % (min_generation, top_generation))
 
     args = ffi.new('struct btrfs_ioctl_search_args *')
     args_buffer = ffi.buffer(args)
@@ -165,9 +165,9 @@ def track_updated_files(sess, volume_fd, results_file):
         InodeAndSize.size,
         func.group_concat(MiniHash.inode)
     ).filter(
-        InodeAndSize.inode==MiniHash.inode,
-        InodeAndSize.fs_id==MiniHash.fs_id,
-        InodeAndSize.fs==fs,
+        InodeAndSize.inode == MiniHash.inode,
+        InodeAndSize.fs_id == MiniHash.fs_id,
+        InodeAndSize.fs == fs,
     ).group_by(
         InodeAndSize.size,
         MiniHash.mini_hash
@@ -187,8 +187,8 @@ def track_updated_files(sess, volume_fd, results_file):
             (func.count(InodeAndSize.inode) - 1) * InodeAndSize.size
         ).label('impact')
     ).filter(
-        InodeAndSize.inode==MiniHash.inode,
-        InodeAndSize.fs_id==MiniHash.fs_id==fs.id,
+        InodeAndSize.inode == MiniHash.inode,
+        InodeAndSize.fs_id == MiniHash.fs_id == fs.id,
     ).group_by(
         InodeAndSize.size,
         MiniHash.mini_hash
@@ -221,12 +221,14 @@ sess = Session()
 tracking_model.META.create_all(engine)
 
 volume_fd = os.open(opts.volume, os.O_DIRECTORY)
-# 32MiB, initial scan takes about 12', might gain 15837689948, sqlite takes 256k
-SIZE_CUTOFF = 32*1024**2
+# 32MiB, initial scan takes about 12', might gain 15837689948,
+# sqlite takes 256k
+SIZE_CUTOFF = 32 * 1024 ** 2
 # about 12' again, might gain 25807974687
-SIZE_CUTOFF = 16*1024**2
-# 13'40" (36' with a backup job running in parallel), might gain 26929240347, sqlite takes 758k
-SIZE_CUTOFF = 8*1024**2
+SIZE_CUTOFF = 16 * 1024 ** 2
+# 13'40" (36' with a backup job running in parallel), might gain 26929240347,
+# sqlite takes 758k
+SIZE_CUTOFF = 8 * 1024 ** 2
 
 # May raise IOError, let Python print it
 track_updated_files(sess, volume_fd, sys.stdout)
