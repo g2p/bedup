@@ -35,20 +35,22 @@ def dedup_same(source, dests):
 def dedup_same_fds(source_fd, dest_fds):
     revert_immutable_fds = []
 
-    for fd in [source_fd] + dest_fds:
-        # Prevents anyone else from creating write-mode file descriptors,
-        # but the ones we just created remain valid.
-        was_immutable = editflags(fd, add_flags=FS_IMMUTABLE_FL)
-        if not was_immutable:
-            revert_immutable_fds.append(fd)
-        # TODO: check no one else has kept writable file descriptors around.
+    try:
+        for fd in [source_fd] + dest_fds:
+            # Prevents anyone else from creating write-mode file descriptors,
+            # but the ones we just created remain valid.
+            was_immutable = editflags(fd, add_flags=FS_IMMUTABLE_FL)
+            if not was_immutable:
+                revert_immutable_fds.append(fd)
+            # TODO: check no one else has kept writable
+            # file descriptors around.
 
-    for fd in dest_fds:
-        if not cmp_fds(source_fd, fd):
-            # XXX FDs are not very descriptive
-            raise FilesDiffer(source_fd, fd)
-        clone_data(dest=fd, src=source_fd)
-
-    for fd in revert_immutable_fds:
-        editflags(fd, remove_flags=FS_IMMUTABLE_FL)
+        for fd in dest_fds:
+            if not cmp_fds(source_fd, fd):
+                # XXX FDs are not very descriptive
+                raise FilesDiffer(source_fd, fd)
+            clone_data(dest=fd, src=source_fd)
+    finally:
+        for fd in revert_immutable_fds:
+            editflags(fd, remove_flags=FS_IMMUTABLE_FL)
 
