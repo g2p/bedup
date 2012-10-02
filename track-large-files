@@ -135,13 +135,6 @@ def track_updated_files(sess, volume_fd, results_file):
         mini_hash, mh_created = get_or_create(
             sess, MiniHash, fs_id=ias.fs_id, inode=ias.inode, ias=ias)
 
-        assert mini_hash.inode == ias.inode
-        assert mini_hash.fs_id == ias.fs_id
-        assert mini_hash.ias is not None, (
-            'ias unset', MiniHash.ias, mini_hash.ias, ias, mh_created)
-        assert mini_hash.ias == ias, (
-            'ias mismatch', MiniHash.ias, mini_hash.ias, ias, mh_created)
-
         # rehash everytime for now
         # I don't know enough about how inode transaction numbers
         # are updated (as opposed to extent updates)
