@@ -124,20 +124,28 @@ def track_updated_files(sess, volume_fd, results_file):
         inodes = map(int, inodes.split(','))
         #results_file.write('dupe candidates for size %d\n' % size)
         for inode in inodes:
-            ias = sess.query(InodeAndSize).filter_by(fs=fs, inode=inode).one()
-            mini_hash, mh_created = get_or_create(
-                sess, MiniHash, fs_id=ias.fs_id, inode=ias.inode)
+            if False:
+                # XXX update_from_file still needs .ias
+                mini_hash, mh_created = get_or_create(
+                    sess, MiniHash, fs_id=fs.id, inode=inode)
+            else:
+                # I don't think it's possible to articulate the outer query
+                # to give us ias.
+                ias = sess.query(InodeAndSize).filter_by(fs=fs, inode=inode).one()
+                mini_hash, mh_created = get_or_create(
+                    sess, MiniHash, fs_id=ias.fs_id, inode=ias.inode)
 
-            assert mini_hash.inode == ias.inode
-            assert mini_hash.fs_id == ias.fs_id
+                assert mini_hash.inode == ias.inode
+                assert mini_hash.fs_id == ias.fs_id
 
-            # XXX cheat for now
-            mini_hash.ias = ias
-            # XXX Fails on initial scans, is FK2 broken?
-            assert mini_hash.ias is not None, (
-                'ias unset', MiniHash.ias, mini_hash.ias, ias, mh_created)
-            assert mini_hash.ias == ias, (
-                'ias mismatch', MiniHash.ias, mini_hash.ias, ias, mh_created)
+                # XXX cheat for now
+                mini_hash.ias = ias
+                # XXX Fails in the mh_created case, is FK2 broken?
+                assert mini_hash.ias is not None, (
+                    'ias unset', MiniHash.ias, mini_hash.ias, ias, mh_created)
+                assert mini_hash.ias == ias, (
+                    'ias mismatch', MiniHash.ias, mini_hash.ias, ias, mh_created)
+
 
             # rehash everytime for now
             # I don't know enough about how inode transaction numbers
@@ -158,7 +166,7 @@ def track_updated_files(sess, volume_fd, results_file):
                     sess.expunge(mini_hash)
                 else:
                     sess.delete(mini_hash)
-                sess.delete(ias)
+                sess.query(InodeAndSize).filter_by(fs=fs, inode=inode).delete()
                 continue
             rfile = fopenat(volume_fd, paths[0])
             mini_hash.update_from_file(rfile)

@@ -46,6 +46,7 @@ def get_or_create(sess, model, **kwargs):
         return sess.query(model).filter_by(**kwargs).one(), False
     except NoResultFound:
         instance = model(**kwargs)
+        # XXX Some of the relationship attributes remain unset at this point
         sess.add(instance)
         return instance, True
 
