@@ -14,7 +14,11 @@ from chattr import editflags, FS_IMMUTABLE_FL
 BUFSIZE = 8192
 
 
-class FilesDiffer(ValueError):
+class FilesDifferError(ValueError):
+    pass
+
+
+class FilesInUseError(RuntimeError):
     pass
 
 
@@ -130,7 +134,7 @@ def mass_dedup_fds(fd_sets):
 
         in_use = list(find_inodes_in_write_use(fds))
         if in_use:
-            raise RuntimeError(
+            raise FilesInUseError(
                 'Some of the files to deduplicate '
                 'are open for writing elsewhere',
                 in_use)
@@ -142,7 +146,9 @@ def mass_dedup_fds(fd_sets):
             for fd in dest_fds:
                 if not cmp_fds(source_fd, fd):
                     # XXX FDs are not very descriptive
-                    raise FilesDiffer(source_fd, fd)
+                    # OTOH they are lightweight.
+                    # Error translation in a non-fd wrapper is an option.
+                    raise FilesDifferError(source_fd, fd)
                 clone_data(dest=fd, src=source_fd)
     finally:
         for fd in revert_immutable_fds:
