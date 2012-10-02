@@ -8,6 +8,10 @@ from chattr import editflags, FS_IMMUTABLE_FL
 BUFSIZE = 8192
 
 
+class FilesDiffer(ValueError):
+    pass
+
+
 def cmp_fds(fd1, fd2):
     # Python 3 can take closefd=False instead of a duplicated fd.
     fi1 = os.fdopen(os.dup(fd1), 'r')
@@ -41,7 +45,8 @@ def dedup_same_fds(source_fd, dest_fds):
 
     for fd in dest_fds:
         if not cmp_fds(source_fd, fd):
-            raise ValueError('File contents differ', source_fd, fd)
+            # XXX FDs are not very descriptive
+            raise FilesDiffer(source_fd, fd)
         clone_data(dest=fd, src=source_fd)
 
     for fd in revert_immutable_fds:
