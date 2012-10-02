@@ -1,5 +1,4 @@
 from cffi import FFI
-import os
 import fcntl
 
 __all__ = (
@@ -78,9 +77,11 @@ def editflags(fd, add_flags=0, remove_flags=0):
     flags_ptr = ffi.new('uint64_t*')
     flags_buf = ffi.buffer(flags_ptr)
     fcntl.ioctl(fd, lib.FS_IOC_GETFLAGS, flags_buf)
+    prev_flags = flags_ptr[0]
     flags_ptr[0] |= add_flags
     # Python represents negative numbers with an infinite number of
     # ones in bitops, so this will work correctly.
     flags_ptr[0] &= ~remove_flags
     fcntl.ioctl(fd, lib.FS_IOC_SETFLAGS, flags_buf)
+    return prev_flags & (add_flags | remove_flags)
 

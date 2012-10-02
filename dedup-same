@@ -1,0 +1,53 @@
+#!/usr/bin/env python
+# vim: set fileencoding=utf-8 sw=4 ts=4 et :
+
+"""
+dedup-same
+
+Freezes files, checks them for being identical,
+and projects the extents of the first file onto the other files.
+
+The effects are visible with filefrag -v, which displays
+the extent map of files.
+"""
+
+import argparse
+import os
+import subprocess
+import sys
+
+from btrfs import clone_data
+from chattr import editflags, FS_IMMUTABLE_FL
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('source', metavar='SRC', help='source file')
+    parser.add_argument('dests', metavar='DEST', nargs='+', help='dest files')
+    opts = parser.parse_args()
+
+    source_fd = os.open(opts.source, 0)
+    dest_fds = [os.open(dname, os.O_WRONLY) for dname in opts.dests]
+    fds = [source_fd] + dest_fds
+    revert_immutable_fds = []
+
+    for fd in fds:
+        # Prevents anyone else from creating write-mode file descriptors,
+        # but the ones we just created remain valid.
+        was_immutable = editflags(fd, add_flags=FS_IMMUTABLE_FL)
+        if not was_immutable:
+            revert_immutable_fds.append(fd)
+        # TODO: check no one else has kept writable file descriptors around.
+
+    for dest, fd in zip(opts.dests, dest_fds):
+        # Raises an exception if the data differs
+        subprocess.check_call('cmp --quiet --'.split() + [opts.source, dest])
+        clone_data(dest=fd, src=source_fd)
+
+    for fd in revert_immutable_fds:
+        editflags(fd, remove_flags=FS_IMMUTABLE_FL)
+
+
+if __name__ == '__main__':
+    sys.exit(main())
+
