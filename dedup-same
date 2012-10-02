@@ -7,8 +7,8 @@ dedup-same
 Freezes files, checks them for being identical,
 and projects the extents of the first file onto the other files.
 
-The effects are visible with filefrag -v, which displays
-the extent map of files.
+The effects are visible with filefrag -v (apt:e2fsprogs),
+which displays the extent map of files.
 """
 
 import argparse
