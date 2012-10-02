@@ -22,7 +22,7 @@ import yaml
 from btrfs import lookup_ino_paths, get_fsid, get_root_generation
 from openat import fopenat
 from sqlalchemy import func, sql
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import sessionmaker, aliased
 from tracking_model import Filesystem, InodeAndSize, MiniHash, get_or_create
 
 
@@ -107,70 +107,64 @@ def track_updated_files(sess, volume_fd, results_file):
     fs.last_tracked_generation = top_generation
     sess.commit()
 
-    for (size, inodes) in sess.query(
-        InodeAndSize.size,
-        func.group_concat(InodeAndSize.inode)
-    ).filter_by(
-        fs=fs
-    ).group_by(
-        InodeAndSize.size
-    ).having(
-        func.count(InodeAndSize.inode) > 1
+    # Rename the entity to be able to self-join unambiguously
+    IAS2 = aliased(InodeAndSize)
+
+    for ias in sess.query(
+        IAS2
+    ).select_from(
+        sess.query(
+            InodeAndSize.size
+        ).filter_by(
+            fs=fs
+        ).group_by(
+            InodeAndSize.size
+        ).having(
+            func.count(InodeAndSize.inode) > 1
+        ).subquery()
+    ).filter(
+        IAS2.size == InodeAndSize.size
     ):
         # XXX Need to cope with deleted inodes.
         # We cannot find them in the search-new pass,
         # not without doing some tracking of directory modifications to poke
         # updated directories to find removed elements.
-        inodes = map(int, inodes.split(','))
-        #results_file.write('dupe candidates for size %d\n' % size)
-        for inode in inodes:
-            if False:
-                # XXX update_from_file still needs .ias
-                mini_hash, mh_created = get_or_create(
-                    sess, MiniHash, fs_id=fs.id, inode=inode)
+
+        # We need to set both fs_id, inode, and ias, despite the redundancy;
+        # ias isn't set reasonably in the mh_created case.
+        mini_hash, mh_created = get_or_create(
+            sess, MiniHash, fs_id=ias.fs_id, inode=ias.inode, ias=ias)
+
+        assert mini_hash.inode == ias.inode
+        assert mini_hash.fs_id == ias.fs_id
+        assert mini_hash.ias is not None, (
+            'ias unset', MiniHash.ias, mini_hash.ias, ias, mh_created)
+        assert mini_hash.ias == ias, (
+            'ias mismatch', MiniHash.ias, mini_hash.ias, ias, mh_created)
+
+        # rehash everytime for now
+        # I don't know enough about how inode transaction numbers
+        # are updated (as opposed to extent updates)
+        # to be able to actually cache the result
+        try:
+            paths = list(lookup_ino_paths(volume_fd, ias.inode))
+        except IOError, e:
+            if e.errno != errno.ENOENT:
+                raise
+            # We have a stale record for a removed inode
+            # XXX If an inode number is reused and the second instance is
+            # below the size cutoff, we won't update the InodeAndSize
+            # record and we won't get an IOError to notify us either.
+            # Inode reuse does happen (with and without inode_cache),
+            # so this branch isn't enough to rid us of all stale entries.
+            if mh_created:
+                sess.expunge(mini_hash)
             else:
-                # I don't think it's possible to articulate the outer query
-                # to give us ias.
-                ias = sess.query(InodeAndSize).filter_by(fs=fs, inode=inode).one()
-                mini_hash, mh_created = get_or_create(
-                    sess, MiniHash, fs_id=ias.fs_id, inode=ias.inode)
-
-                assert mini_hash.inode == ias.inode
-                assert mini_hash.fs_id == ias.fs_id
-
-                # XXX cheat for now
-                mini_hash.ias = ias
-                # XXX Fails in the mh_created case, is FK2 broken?
-                assert mini_hash.ias is not None, (
-                    'ias unset', MiniHash.ias, mini_hash.ias, ias, mh_created)
-                assert mini_hash.ias == ias, (
-                    'ias mismatch', MiniHash.ias, mini_hash.ias, ias, mh_created)
-
-
-            # rehash everytime for now
-            # I don't know enough about how inode transaction numbers
-            # are updated (as opposed to extent updates)
-            # to be able to actually cache the result
-            try:
-                paths = list(lookup_ino_paths(volume_fd, inode))
-            except IOError, e:
-                if e.errno != errno.ENOENT:
-                    raise
-                # We have a stale record for a removed inode
-                # XXX If an inode number is reused and the second instance is
-                # below the size cutoff, we won't update the InodeAndSize
-                # record and we won't get an IOError to notify us either.
-                # Inode reuse does happen (with and without inode_cache),
-                # so this branch isn't enough to rid us of all stale entries.
-                if mh_created:
-                    sess.expunge(mini_hash)
-                else:
-                    sess.delete(mini_hash)
-                sess.query(InodeAndSize).filter_by(fs=fs, inode=inode).delete()
-                continue
-            rfile = fopenat(volume_fd, paths[0])
-            mini_hash.update_from_file(rfile)
-            #results_file.write('inode %d paths %s\n' % (inode, paths))
+                sess.delete(mini_hash)
+            sess.delete(ias)
+            continue
+        rfile = fopenat(volume_fd, paths[0])
+        mini_hash.update_from_file(rfile)
     sess.commit()
 
     for (mini_hash, size, inodes) in sess.query(
