@@ -22,7 +22,10 @@ def cmp_fds(fd1, fd2):
     # Python 3 can take closefd=False instead of a duplicated fd.
     fi1 = os.fdopen(os.dup(fd1), 'r')
     fi2 = os.fdopen(os.dup(fd2), 'r')
+    return cmp_files(fi1, fi2)
 
+
+def cmp_files(fi1, fi2):
     while True:
         b1 = fi1.read(BUFSIZE)
         b2 = fi2.read(BUFSIZE)
