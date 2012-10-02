@@ -125,12 +125,6 @@ def mass_dedup_fds(fd_sets):
             was_immutable = editflags(fd, add_flags=FS_IMMUTABLE_FL)
             if not was_immutable:
                 revert_immutable_fds.append(fd)
-            # TODO: check no one else has kept writable
-            # file descriptors around.
-            # fuser fails in case of nlinks > 1, lsof does manage to find
-            # by name in that case.
-            # That basically requires stating all of /proc/*/fd/*
-            # and comparing inode numbers.
 
         in_use = list(find_inodes_in_write_use(fds))
         if in_use:
