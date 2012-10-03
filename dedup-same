@@ -14,7 +14,7 @@ which displays the extent map of files.
 import argparse
 import sys
 
-from dedup import dedup_same
+from bedup.dedup import dedup_same
 
 
 def main():

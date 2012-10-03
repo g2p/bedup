@@ -17,23 +17,25 @@ import os
 import sqlalchemy
 import stat
 import sys
-import tracking_model
 import xdg.BaseDirectory  # pyxdg, apt:python-xdg
 
-from btrfs import (
+from bedup import tracking_model
+from bedup.btrfs import (
     lookup_ino_paths, get_fsid, get_root_generation, clone_data, defragment)
-from dedup import ImmutableFDs, cmp_files
-from ioprio import set_idle_priority
-from openat import fopenat, fopenat_rw
+from bedup.dedup import ImmutableFDs, cmp_files
+from bedup.ioprio import set_idle_priority
+from bedup.openat import fopenat, fopenat_rw
+from bedup.tracking_model import (
+    Filesystem, InodeAndSize, MiniHash, get_or_create)
+
 from sqlalchemy import func, sql
 from sqlalchemy.orm import sessionmaker, aliased
-from tracking_model import Filesystem, InodeAndSize, MiniHash, get_or_create
 
 BUFSIZE = 8192
 
 
 def track_updated_files(sess, volume_fd, results_file):
-    from btrfs import ffi, u64_max
+    from bedup.btrfs import ffi, u64_max
 
     fs, fs_created = get_or_create(
         sess, Filesystem,

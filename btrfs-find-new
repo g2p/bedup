@@ -14,7 +14,7 @@ import argparse
 import os
 import sys
 
-from btrfs import find_new
+from bedup.btrfs import find_new
 
 parser = argparse.ArgumentParser(usage=__doc__.strip())
 parser.add_argument('volume', help='volume to search')
