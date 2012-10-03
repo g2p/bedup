@@ -92,7 +92,8 @@ def find_inodes_in_use(fds):
 
     Looks at /proc/*/fd and /proc/*/map_files (Linux 3.3).
     Conceivably there are other uses we're missing, to be foolproof
-    will require support in btrfs itself (in the form of a share-range ioctl).
+    will require support in btrfs itself; a share-same-range ioctl
+    would work well.
     """
 
     self_pid = os.getpid()
