@@ -48,6 +48,8 @@ def cmp_fds(fd1, fd2):
 
 
 def cmp_files(fi1, fi2):
+    fi1.seek(0)
+    fi2.seek(0)
     while True:
         b1 = fi1.read(BUFSIZE)
         b2 = fi2.read(BUFSIZE)

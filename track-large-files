@@ -9,8 +9,10 @@ Maintains a size -> inode lookup table.
 """
 
 import argparse
+import collections
 import errno
 import fcntl
+import hashlib
 import os
 import sqlalchemy
 import stat
@@ -18,11 +20,14 @@ import sys
 import tracking_model
 import xdg.BaseDirectory  # pyxdg, apt:python-xdg
 
-from btrfs import lookup_ino_paths, get_fsid, get_root_generation
-from openat import fopenat
+from btrfs import lookup_ino_paths, get_fsid, get_root_generation, clone_data
+from dedup import ImmutableFDs, cmp_files
+from openat import fopenat, fopenat_rw
 from sqlalchemy import func, sql
 from sqlalchemy.orm import sessionmaker, aliased
 from tracking_model import Filesystem, InodeAndSize, MiniHash, get_or_create
+
+BUFSIZE = 8192
 
 
 def track_updated_files(sess, volume_fd, results_file):
@@ -184,9 +189,51 @@ def track_updated_files(sess, volume_fd, results_file):
         results_file.write(
             'dupe candidates for size %d and mini_hash %x\n'
             % (size, mini_hash))
+        files = []
+        fds = []
+        fd_names = {}
+        by_hash = collections.defaultdict(list)
+
         for inode in inodes:
             paths = list(lookup_ino_paths(volume_fd, inode))
             results_file.write('inode %d paths %s\n' % (inode, paths))
+            # Open everything rw, we don't know which
+            # can be a read-only source yet.
+            afile = fopenat_rw(volume_fd, paths[0])
+            fd_names[afile.fileno()] = paths[0]
+            files.append(afile)
+            fds.append(afile.fileno())
+
+        with ImmutableFDs(fds) as immutability:
+            for afile in files:
+                afd = afile.fileno()
+                if afd in immutability.fds_in_write_use:
+                    aname = fd_names[afd]
+                    results_file.write('File %r is in use, skipping' % aname)
+                    continue
+                hasher = hashlib.sha1()
+                for buf in iter(lambda: afile.read(BUFSIZE), ''):
+                    hasher.update(buf)
+                by_hash[hasher.digest()].append(afile)
+            for fileset in by_hash.itervalues():
+                if len(fileset) < 2:
+                    continue
+                sfile = fileset[0]
+                dfiles = fileset[1:]
+                for dfile in dfiles:
+                    sfd = sfile.fileno()
+                    dfd = dfile.fileno()
+                    sname = fd_names[sfd]
+                    dname = fd_names[dfd]
+                    if not cmp_files(sfile, dfile):
+                        # Probably a bug since we just used a crypto hash
+                        results_file.write('Files differ: %r %r\n' % (
+                            sname, dname))
+                        assert False, (sname, dname)
+                        continue
+                    results_file.write('Will dedup: %r %r\n' % (
+                        sname, dname))
+                    clone_data(dest=dfd, src=sfd)
 
     impact_q1 = sess.query(
         (
