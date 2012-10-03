@@ -3,7 +3,7 @@ from sqlalchemy.orm import relationship
 from sqlalchemy.orm.exc import NoResultFound
 from sqlalchemy.sql import and_
 from sqlalchemy.ext.declarative import declarative_base, declared_attr
-from sqlalchemy.types import (Integer, SmallInteger, Binary)
+from sqlalchemy.types import (Integer, Binary)
 from sqlalchemy import (Column, ForeignKey)
 from zlib import adler32
 
