@@ -29,7 +29,7 @@ ProcUseInfo = collections.namedtuple(
 def proc_use_info(proc_path):
     try:
         mode = os.lstat(proc_path).st_mode
-    except OSError, e:
+    except OSError as e:
         if e.errno == errno.ENOENT:
             return
         raise
@@ -119,7 +119,7 @@ def find_inodes_in_use(fds):
         for proc_path in it:
             try:
                 st = os.stat(proc_path)
-            except OSError, e:
+            except OSError as e:
                 # glob opens directories during matching,
                 # and other processes might close their fds in the meantime.
                 # This isn't a problem for the immutable-locked use case.

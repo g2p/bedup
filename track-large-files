@@ -156,7 +156,7 @@ def track_updated_files(sess, volume_fd, results_file):
         # to be able to actually cache the result
         try:
             paths = list(lookup_ino_paths(volume_fd, ias.inode))
-        except IOError, e:
+        except IOError as e:
             if e.errno != errno.ENOENT:
                 raise
             # We have a stale record for a removed inode
@@ -206,7 +206,7 @@ def track_updated_files(sess, volume_fd, results_file):
             # We may also want to defragment the source.
             try:
                 afile = fopenat_rw(volume_fd, paths[0])
-            except IOError, e:
+            except IOError as e:
                 # File contains the image of a running process,
                 # we can't open it in write mode.
                 if e.errno == errno.ETXTBSY:
