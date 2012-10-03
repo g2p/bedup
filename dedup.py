@@ -65,9 +65,6 @@ def dedup_same(source, dests):
 
         for fd in dest_fds:
             if not cmp_fds(source_fd, fd):
-                # XXX FDs are not very descriptive
-                # OTOH they are lightweight.
-                # Error translation in a non-fd wrapper is an option.
                 raise FilesDifferError(fd_names[source_fd], fd_names[fd])
             clone_data(dest=fd, src=source_fd)
 
@@ -140,6 +137,9 @@ def find_inodes_in_use(fds):
 
 class ImmutableFDs(object):
     """A context manager to mark a set of fds immutable.
+
+    Actually works at the inode level, fds are just to make sure
+    inodes can be referenced unambiguously.
     """
 
     def __init__(self, fds):
