@@ -5,6 +5,7 @@ import errno
 import glob
 import os
 import re
+import stat
 
 from btrfs import clone_data
 from chattr import editflags, FS_IMMUTABLE_FL
@@ -29,6 +30,8 @@ class UseInfo(collections.namedtuple('UseInfo', 'other_pid other_fd mode')):
     @property
     def is_readable(self):
         return not (self.mode & os.O_WRONLY)
+
+UseInfo2 = collections.namedtuple('UseInfo2', 'proc_path is_readable is_writable')
 
 
 def cmp_fds(fd1, fd2):
@@ -83,13 +86,13 @@ def find_inodes_in_use(fds):
     """
     Find which of these inodes are in use, and give their open modes.
 
-    Does not give the modes of the same fds in the same process,
-    but might include other modes if this process has the same file
-    open under a different file descriptor.
+    Does not count the passed fds as an use of the inode they point to,
+    but if the current process has the same inodes open with different
+    file descriptors these will be listed.
 
-    XXX This does not catch mmaped files.
-    lsof finds mmaps (in catch-all mode, they are not found
-    when passed a fname argument), fuser doesn't.
+    Looks at /proc/*/fd and /proc/*/map_files (Linux 3.3).
+    Conceivably there are other uses we're missing, to be foolproof
+    will require support in btrfs itself (in the form of a share-range ioctl).
     """
 
     self_pid = os.getpid()
@@ -137,6 +140,42 @@ def find_inodes_in_use(fds):
         mode = int(FLAGS_LINE_RE.match(flags_line).group(1), 8)
         for fd in original_fds:
             yield (fd, UseInfo(other_pid, other_fd, mode))
+
+    # Requires Linux 3.3
+    # XXX code duplication
+    for proc_path in glob.glob('/proc/*/map_files/*'):
+        # access the current process under its full pid only
+        if proc_path.startswith('/proc/self/'):
+            continue
+
+        try:
+            st = os.stat(proc_path)
+        except OSError, e:
+            # glob opens directories during matching,
+            # and other processes might close their fds in the meantime.
+            # This isn't a problem for the immutable-locked use case.
+            if e.errno == errno.ENOENT:
+                continue
+            raise
+
+        st_id = (st.st_dev, st.st_ino)
+        if st_id not in id_fd_assoc:
+            continue
+
+        try:
+            mode = os.lstat(proc_path).st_mode
+        except OSError, e:
+            if e.errno == errno.ENOENT:
+                continue
+            raise
+        use_info = UseInfo2(
+            proc_path=proc_path,
+            is_readable=bool(mode & stat.S_IRUSR),
+            is_writable=bool(mode & stat.S_IWUSR))
+
+        original_fds = id_fd_assoc[st_id]
+        for fd in original_fds:
+            yield (fd, use_info)
 
 
 class ImmutableFDs(object):
