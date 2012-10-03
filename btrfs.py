@@ -387,6 +387,8 @@ def clone_data(dest, src):
 
 
 def defragment(fd):
+    # XXX Can remove compression as a side-effect
+    # Also, can unshare extents.
     fcntl.ioctl(fd, lib.BTRFS_IOC_DEFRAG)
 
 

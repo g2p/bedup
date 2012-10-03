@@ -20,7 +20,8 @@ import sys
 import tracking_model
 import xdg.BaseDirectory  # pyxdg, apt:python-xdg
 
-from btrfs import lookup_ino_paths, get_fsid, get_root_generation, clone_data
+from btrfs import (
+    lookup_ino_paths, get_fsid, get_root_generation, clone_data, defragment)
 from dedup import ImmutableFDs, cmp_files
 from ioprio import set_idle_priority
 from openat import fopenat, fopenat_rw
@@ -204,6 +205,8 @@ def track_updated_files(sess, volume_fd, results_file):
             try:
                 afile = fopenat_rw(volume_fd, paths[0])
             except IOError, e:
+                # File contains the image of a running process,
+                # we can't open it in write mode.
                 if e.errno == errno.ETXTBSY:
                     continue
                 raise
@@ -226,9 +229,13 @@ def track_updated_files(sess, volume_fd, results_file):
                 if len(fileset) < 2:
                     continue
                 sfile = fileset[0]
+                sfd = sfile.fileno()
+                # XXX Make this optional, defragmentation can unshare extents.
+                # It can also disable compression as a side-effect.
+                if False:
+                    defragment(sfd)
                 dfiles = fileset[1:]
                 for dfile in dfiles:
-                    sfd = sfile.fileno()
                     dfd = dfile.fileno()
                     sname = fd_names[sfd]
                     dname = fd_names[dfd]
