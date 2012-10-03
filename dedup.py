@@ -86,6 +86,9 @@ def find_inodes_in_use(fds):
     Does not give the modes of the same fds in the same process,
     but might include other modes if this process has the same file
     open under a different file descriptor.
+
+    XXX This does not catch mmaped files.
+    lsof finds mmaps, fuser doesn't.
     """
 
     self_pid = os.getpid()
