@@ -3,7 +3,6 @@
 import collections
 import errno
 import glob
-import operator
 import os
 import re
 
@@ -75,7 +74,6 @@ def dedup_same(source, dests):
             clone_data(dest=fd, src=source_fd)
 
 
-
 PROC_PATH_RE = re.compile(r'^/proc/(\d+)/fd/(\d+)$')
 FLAGS_LINE_RE = re.compile(r'^flags:\s+0(\d+)\n$')
 
@@ -129,7 +127,8 @@ def find_inodes_in_use(fds):
                 continue
 
         try:
-            flags_line = list(open('/proc/%d/fdinfo/%d' % (other_pid, other_fd)))[1]
+            flags_line = list(open(
+                '/proc/%d/fdinfo/%d' % (other_pid, other_fd)))[1]
         except IOError, e:
             if e.errno == errno.ENOENT:
                 continue
