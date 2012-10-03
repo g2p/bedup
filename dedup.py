@@ -22,7 +22,9 @@ class FilesInUseError(RuntimeError):
     pass
 
 
-ProcUseInfo = collections.namedtuple('ProcUseInfo', 'proc_path is_readable is_writable')
+ProcUseInfo = collections.namedtuple(
+    'ProcUseInfo', 'proc_path is_readable is_writable')
+
 
 def proc_use_info(proc_path):
     try:
@@ -36,7 +38,6 @@ def proc_use_info(proc_path):
             proc_path=proc_path,
             is_readable=bool(mode & stat.S_IRUSR),
             is_writable=bool(mode & stat.S_IWUSR))
-
 
 
 def cmp_fds(fd1, fd2):
@@ -78,7 +79,6 @@ def dedup_same(source, dests):
 
 
 PROC_PATH_RE = re.compile(r'^/proc/(\d+)/fd/(\d+)$')
-FLAGS_LINE_RE = re.compile(r'^flags:\s+0(\d+)\n$')
 
 
 def find_inodes_in_write_use(fds):
