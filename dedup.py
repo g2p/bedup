@@ -22,16 +22,21 @@ class FilesInUseError(RuntimeError):
     pass
 
 
-class UseInfo(collections.namedtuple('UseInfo', 'other_pid other_fd mode')):
-    @property
-    def is_writable(self):
-        return bool(self.mode & (os.O_WRONLY | os.O_RDWR))
+ProcUseInfo = collections.namedtuple('ProcUseInfo', 'proc_path is_readable is_writable')
 
-    @property
-    def is_readable(self):
-        return not (self.mode & os.O_WRONLY)
+def proc_use_info(proc_path):
+    try:
+        mode = os.lstat(proc_path).st_mode
+    except OSError, e:
+        if e.errno == errno.ENOENT:
+            return
+        raise
+    else:
+        return ProcUseInfo(
+            proc_path=proc_path,
+            is_readable=bool(mode & stat.S_IRUSR),
+            is_writable=bool(mode & stat.S_IWUSR))
 
-UseInfo2 = collections.namedtuple('UseInfo2', 'proc_path is_readable is_writable')
 
 
 def cmp_fds(fd1, fd2):
@@ -103,21 +108,25 @@ def find_inodes_in_use(fds):
         st = os.fstat(fd)
         id_fd_assoc[(st.st_dev, st.st_ino)].append(fd)
 
-    for proc_path in glob.glob('/proc/[1-9]*/fd/*'):
-        try:
-            st = os.stat(proc_path)
-        except OSError, e:
-            # glob opens directories during matching,
-            # and other processes might close their fds in the meantime.
-            # This isn't a problem for the immutable-locked use case.
-            if e.errno == errno.ENOENT:
+    def st_id_candidates(it):
+        for proc_path in it:
+            try:
+                st = os.stat(proc_path)
+            except OSError, e:
+                # glob opens directories during matching,
+                # and other processes might close their fds in the meantime.
+                # This isn't a problem for the immutable-locked use case.
+                if e.errno == errno.ENOENT:
+                    continue
+                raise
+
+            st_id = (st.st_dev, st.st_ino)
+            if st_id not in id_fd_assoc:
                 continue
-            raise
 
-        st_id = (st.st_dev, st.st_ino)
-        if st_id not in id_fd_assoc:
-            continue
+            yield proc_path, st_id
 
+    for proc_path, st_id in st_id_candidates(glob.glob('/proc/[1-9]*/fd/*')):
         other_pid, other_fd = map(
             int, PROC_PATH_RE.match(proc_path).groups())
         original_fds = id_fd_assoc[st_id]
@@ -125,46 +134,20 @@ def find_inodes_in_use(fds):
             if other_fd in original_fds:
                 continue
 
-        try:
-            flags_line = list(open(
-                '/proc/%d/fdinfo/%d' % (other_pid, other_fd)))[1]
-        except IOError, e:
-            if e.errno == errno.ENOENT:
-                continue
-            raise
-
-        # Parse octal
-        mode = int(FLAGS_LINE_RE.match(flags_line).group(1), 8)
-        for fd in original_fds:
-            yield (fd, UseInfo(other_pid, other_fd, mode))
-
-    # Requires Linux 3.3
-    # XXX code duplication
-    for proc_path in glob.glob('/proc/[1-9]*/map_files/*'):
-        try:
-            st = os.stat(proc_path)
-        except OSError, e:
-            # glob opens directories during matching,
-            # and other processes might close their fds in the meantime.
-            # This isn't a problem for the immutable-locked use case.
-            if e.errno == errno.ENOENT:
-                continue
-            raise
-
-        st_id = (st.st_dev, st.st_ino)
-        if st_id not in id_fd_assoc:
+        use_info = proc_use_info(proc_path)
+        if not use_info:
             continue
 
-        try:
-            mode = os.lstat(proc_path).st_mode
-        except OSError, e:
-            if e.errno == errno.ENOENT:
-                continue
-            raise
-        use_info = UseInfo2(
-            proc_path=proc_path,
-            is_readable=bool(mode & stat.S_IRUSR),
-            is_writable=bool(mode & stat.S_IWUSR))
+        for fd in original_fds:
+            yield (fd, use_info)
+
+    # Requires Linux 3.3
+    for proc_path, st_id in st_id_candidates(
+        glob.glob('/proc/[1-9]*/map_files/*')
+    ):
+        use_info = proc_use_info(proc_path)
+        if not use_info:
+            continue
 
         original_fds = id_fd_assoc[st_id]
         for fd in original_fds:
