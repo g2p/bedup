@@ -21,8 +21,11 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('source', metavar='SRC', help='source file')
     parser.add_argument('dests', metavar='DEST', nargs='+', help='dest files')
+    parser.add_argument(
+        '--defragment', action='store_true',
+        help='defragment the source file first')
     opts = parser.parse_args()
-    return dedup_same(opts.source, opts.dests)
+    return dedup_same(opts.source, opts.dests, opts.defragment)
 
 
 if __name__ == '__main__':

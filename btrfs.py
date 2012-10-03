@@ -18,6 +18,7 @@ ffi.cdef("""
 #define BTRFS_IOC_INO_LOOKUP ...
 #define BTRFS_IOC_FS_INFO ...
 #define BTRFS_IOC_CLONE ...
+#define BTRFS_IOC_DEFRAG ...
 
 #define BTRFS_FSID_SIZE ...
 #define BTRFS_UUID_SIZE ...
@@ -380,8 +381,13 @@ def get_root_generation(volume_fd):
     return max_found
 
 
+# clone_data and defragment also have _RANGE variants
 def clone_data(dest, src):
     fcntl.ioctl(dest, lib.BTRFS_IOC_CLONE, src)
+
+
+def defragment(fd):
+    fcntl.ioctl(fd, lib.BTRFS_IOC_DEFRAG)
 
 
 class FindError(Exception):

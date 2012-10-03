@@ -7,7 +7,7 @@ import os
 import re
 import stat
 
-from btrfs import clone_data
+from btrfs import clone_data, defragment as btrfs_defragment
 from chattr import editflags, FS_IMMUTABLE_FL
 
 
@@ -59,8 +59,11 @@ def cmp_files(fi1, fi2):
             return True
 
 
-def dedup_same(source, dests):
-    source_fd = os.open(source, os.O_RDONLY)
+def dedup_same(source, dests, defragment=False):
+    if defragment:
+        source_fd = os.open(source, os.O_RDWR)
+    else:
+        source_fd = os.open(source, os.O_RDONLY)
     dest_fds = [os.open(dname, os.O_RDWR) for dname in dests]
     fds = [source_fd] + dest_fds
     fd_names = dict(zip(fds, [source] + dests))
@@ -74,6 +77,8 @@ def dedup_same(source, dests):
                     (fd_names[fd], tuple(immutability.write_use_info(fd)))
                     for fd in immutability.fds_in_write_use))
 
+        if defragment:
+            btrfs_defragment(source_fd)
         for fd in dest_fds:
             if not cmp_fds(source_fd, fd):
                 raise FilesDifferError(fd_names[source_fd], fd_names[fd])

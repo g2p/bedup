@@ -200,6 +200,7 @@ def track_updated_files(sess, volume_fd, results_file):
             results_file.write('inode %d paths %s\n' % (inode, paths))
             # Open everything rw, we don't know which
             # can be a read-only source yet.
+            # We may also want to defragment the source.
             afile = fopenat_rw(volume_fd, paths[0])
             fd_names[afile.fileno()] = paths[0]
             files.append(afile)
