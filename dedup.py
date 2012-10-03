@@ -103,11 +103,7 @@ def find_inodes_in_use(fds):
         st = os.fstat(fd)
         id_fd_assoc[(st.st_dev, st.st_ino)].append(fd)
 
-    for proc_path in glob.glob('/proc/*/fd/*'):
-        # access the current process under its full pid only
-        if proc_path.startswith('/proc/self/'):
-            continue
-
+    for proc_path in glob.glob('/proc/[1-9]*/fd/*'):
         try:
             st = os.stat(proc_path)
         except OSError, e:
@@ -144,11 +140,7 @@ def find_inodes_in_use(fds):
 
     # Requires Linux 3.3
     # XXX code duplication
-    for proc_path in glob.glob('/proc/*/map_files/*'):
-        # access the current process under its full pid only
-        if proc_path.startswith('/proc/self/'):
-            continue
-
+    for proc_path in glob.glob('/proc/[1-9]*/map_files/*'):
         try:
             st = os.stat(proc_path)
         except OSError, e:
