@@ -88,7 +88,8 @@ def find_inodes_in_use(fds):
     open under a different file descriptor.
 
     XXX This does not catch mmaped files.
-    lsof finds mmaps, fuser doesn't.
+    lsof finds mmaps (in catch-all mode, they are not found
+    when passed a fname argument), fuser doesn't.
     """
 
     self_pid = os.getpid()
