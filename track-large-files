@@ -22,6 +22,7 @@ import xdg.BaseDirectory  # pyxdg, apt:python-xdg
 
 from btrfs import lookup_ino_paths, get_fsid, get_root_generation, clone_data
 from dedup import ImmutableFDs, cmp_files
+from ioprio import set_idle_priority
 from openat import fopenat, fopenat_rw
 from sqlalchemy import func, sql
 from sqlalchemy.orm import sessionmaker, aliased
@@ -283,6 +284,7 @@ SIZE_CUTOFF = 16 * 1024 ** 2
 # sqlite takes 758k
 SIZE_CUTOFF = 8 * 1024 ** 2
 
+set_idle_priority()
 # May raise IOError, let Python print it
 track_updated_files(sess, volume_fd, sys.stdout)
 
