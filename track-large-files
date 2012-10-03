@@ -201,7 +201,12 @@ def track_updated_files(sess, volume_fd, results_file):
             # Open everything rw, we don't know which
             # can be a read-only source yet.
             # We may also want to defragment the source.
-            afile = fopenat_rw(volume_fd, paths[0])
+            try:
+                afile = fopenat_rw(volume_fd, paths[0])
+            except IOError, e:
+                if e.errno == errno.ETXTBSY:
+                    continue
+                raise
             fd_names[afile.fileno()] = paths[0]
             files.append(afile)
             fds.append(afile.fileno())
