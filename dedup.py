@@ -52,8 +52,6 @@ def dedup_same(source, dests):
     source_fd = os.open(source, os.O_RDONLY)
     dest_fds = [os.open(dname, os.O_RDWR) for dname in dests]
     fds = [source_fd] + dest_fds
-    # Might contain less names if the caller gave us repeated fds,
-    # but that's only used for error reporting.
     fd_names = dict(zip(fds, [source] + dests))
 
     with ImmutableFDs(fds) as immutability:
