@@ -1,6 +1,8 @@
 from cffi import FFI
 import os
 
+# Or we could just use psutil (though it's not PyPy compatible)
+
 
 ffi = FFI()
 ffi.cdef('''
@@ -39,7 +41,6 @@ static inline int ioprio_set(int which, int who, int ioprio) {
 static inline int ioprio_get(int which, int who) {
     return syscall(SYS_ioprio_get, which, who);
 }
-
 ''')
 
 IOPRIO_IDLE_CLASS = 3
