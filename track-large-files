@@ -48,12 +48,17 @@ def track_updated_files(sess, volume_fd, results_file):
     # But find-new uses that and it seems to work.
     sk.tree_id = 0
 
+    # Because we don't have min_objectid = max_objectid,
+    # a min_type filter would be ineffective.
+    # min_ criteria are modified by the kernel during tree traversal;
+    # they are used as an iterator on tuple order,
+    # not an intersection of min ranges.
     sk.min_transid = min_generation
 
     sk.max_objectid = u64_max
     sk.max_offset = u64_max
     sk.max_transid = u64_max
-    sk.max_type = lib.BTRFS_EXTENT_DATA_KEY
+    sk.max_type = lib.BTRFS_INODE_ITEM_KEY
 
     while True:
         sk.nr_items = 4096
@@ -73,6 +78,7 @@ def track_updated_files(sess, volume_fd, results_file):
                 'struct btrfs_ioctl_search_header *', args.buf + offset)
             offset += ffi.sizeof('struct btrfs_ioctl_search_header') + sh.len
 
+            # We can't prevent the search from grabbing irrelevant types
             if sh.type == lib.BTRFS_INODE_ITEM_KEY:
                 item = ffi.cast(
                     'struct btrfs_inode_item *', sh + 1)
