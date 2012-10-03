@@ -22,6 +22,16 @@ class FilesInUseError(RuntimeError):
     pass
 
 
+class UseInfo(collections.namedtuple('UseInfo', 'other_pid other_fd mode')):
+    @property
+    def is_writable(self):
+        return bool(self.mode & (os.O_WRONLY | os.O_RDWR))
+
+    @property
+    def is_readable(self):
+        return not (self.mode & os.O_WRONLY)
+
+
 def cmp_fds(fd1, fd2):
     # Python 3 can take closefd=False instead of a duplicated fd.
     fi1 = os.fdopen(os.dup(fd1), 'r')
@@ -42,7 +52,28 @@ def cmp_files(fi1, fi2):
 def dedup_same(source, dests):
     source_fd = os.open(source, os.O_RDONLY)
     dest_fds = [os.open(dname, os.O_RDWR) for dname in dests]
-    return dedup_same_fds(source_fd, dest_fds)
+    fds = [source_fd] + dest_fds
+    # Might contain less names if the caller gave us repeated fds,
+    # but that's only used for error reporting.
+    fd_names = dict(zip(fds, [source] + dests))
+
+    with ImmutableFDs(fds) as immutability:
+        if immutability.fds_in_write_use:
+            raise FilesInUseError(
+                'Some of the files to deduplicate '
+                'are open for writing elsewhere',
+                dict(
+                    (fd_names[fd], tuple(immutability.write_use_info(fd)))
+                    for fd in immutability.fds_in_write_use))
+
+        for fd in dest_fds:
+            if not cmp_fds(source_fd, fd):
+                # XXX FDs are not very descriptive
+                # OTOH they are lightweight.
+                # Error translation in a non-fd wrapper is an option.
+                raise FilesDifferError(fd_names[source_fd], fd_names[fd])
+            clone_data(dest=fd, src=source_fd)
+
 
 
 PROC_PATH_RE = re.compile(r'^/proc/(\d+)/fd/(\d+)$')
@@ -50,9 +81,9 @@ FLAGS_LINE_RE = re.compile(r'^flags:\s+0(\d+)\n$')
 
 
 def find_inodes_in_write_use(fds):
-    for (fd, other_pid, other_fd, mode) in find_inodes_in_use(fds):
-        if mode & (os.O_WRONLY | os.O_RDWR):
-            yield (fd, other_pid, other_fd, mode)
+    for (fd, use_info) in find_inodes_in_use(fds):
+        if use_info.is_writable:
+            yield (fd, use_info)
 
 
 def find_inodes_in_use(fds):
@@ -105,46 +136,52 @@ def find_inodes_in_use(fds):
             raise
 
         # Parse octal
-        flags = int(FLAGS_LINE_RE.match(flags_line).group(1), 8)
+        mode = int(FLAGS_LINE_RE.match(flags_line).group(1), 8)
         for fd in original_fds:
-            yield (fd, other_pid, other_fd, flags)
+            yield (fd, UseInfo(other_pid, other_fd, mode))
 
 
-def dedup_same_fds(source_fd, dest_fds):
-    return mass_dedup_fds([[source_fd] + dest_fds])
+class ImmutableFDs(object):
+    """A context manager to mark a set of fds immutable.
+    """
 
+    def __init__(self, fds):
+        self.__fds = fds
+        self.__revert_list = []
+        self.__in_use = None
+        self.__writable_fds = None
 
-def mass_dedup_fds(fd_sets):
-    revert_immutable_fds = []
-    fds = reduce(operator.add, fd_sets)
-
-    try:
-        for fd in fds:
-            # Prevents anyone else from creating write-mode file descriptors,
-            # but the ones we just created remain valid.
+    def __enter__(self):
+        for fd in self.__fds:
+            # Prevents anyone from creating write-mode file descriptors,
+            # but the ones that already exist remain valid.
             was_immutable = editflags(fd, add_flags=FS_IMMUTABLE_FL)
             if not was_immutable:
-                revert_immutable_fds.append(fd)
+                self.__revert_list.append(fd)
+        return self
 
-        in_use = list(find_inodes_in_write_use(fds))
-        if in_use:
-            raise FilesInUseError(
-                'Some of the files to deduplicate '
-                'are open for writing elsewhere',
-                in_use)
-
-        for fd_set in fd_sets:
-            source_fd = fd_set[0]
-            dest_fds = fd_set[1:]
-
-            for fd in dest_fds:
-                if not cmp_fds(source_fd, fd):
-                    # XXX FDs are not very descriptive
-                    # OTOH they are lightweight.
-                    # Error translation in a non-fd wrapper is an option.
-                    raise FilesDifferError(source_fd, fd)
-                clone_data(dest=fd, src=source_fd)
-    finally:
-        for fd in revert_immutable_fds:
+    def __exit__(self, exc_type, exc_value, traceback):
+        for fd in self.__revert_list:
             editflags(fd, remove_flags=FS_IMMUTABLE_FL)
+
+    def __require_use_info(self):
+        # We only track write use, other uses can appear after the /proc scan
+        if self.__in_use is None:
+            self.__in_use = collections.defaultdict(list)
+            for (fd, use_info) in find_inodes_in_write_use(self.__fds):
+                self.__in_use[fd].append(use_info)
+            self.__writable_fds = frozenset(self.__in_use.keys())
+
+    def write_use_info(self, fd):
+        self.__require_use_info()
+        # A quick check to prevent unnecessary list instanciation
+        if fd in self.__in_use:
+            return tuple(self.__in_use[fd])
+        else:
+            return tuple()
+
+    @property
+    def fds_in_write_use(self):
+        self.__require_use_info()
+        return self.__writable_fds
 
