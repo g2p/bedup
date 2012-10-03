@@ -62,7 +62,7 @@ def set_idle_priority(pid=None):
     """
     Puts a process in the idle io priority class.
 
-    If pid is omitted, use the current process.
+    If pid is omitted, applies to the current process.
     """
 
     if pid is None:
