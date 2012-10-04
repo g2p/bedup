@@ -239,7 +239,8 @@ def track_updated_files(sess, volume_fd, results_file):
         'Potential space gain: pass 1 %d, pass 2 %d\n' % (
             space_gain1, space_gain2))
 
-    Inode.__table__.update().values(has_updates=False)
+    sess.execute(Inode.__table__.update().values(has_updates=False))
+    sess.commit()
 
 
 parser = argparse.ArgumentParser(usage=__doc__.strip())
