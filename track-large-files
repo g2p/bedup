@@ -31,6 +31,9 @@ from bedup.tracking_model import (
 
 from sqlalchemy.orm import sessionmaker
 
+
+APP_NAME = 'track-large-files'
+
 BUFSIZE = 8192
 
 # 32MiB, initial scan takes about 12', might gain 15837689948,
@@ -43,9 +46,7 @@ SIZE_CUTOFF = 16 * 1024 ** 2
 SIZE_CUTOFF = 8 * 1024 ** 2
 
 
-def track_updated_files(sess, volume_fd, results_file):
-    from bedup.btrfs import ffi, u64_max
-
+def get_fs(sess, volume_fd):
     fs, fs_created = get_or_create(
         sess, Filesystem,
         uuid=get_fsid(volume_fd).bytes,
@@ -53,6 +54,11 @@ def track_updated_files(sess, volume_fd, results_file):
     if fs_created:
         fs.last_tracked_generation = 0
     sess.commit()
+    return fs
+
+
+def track_updated_files(sess, fs, volume_fd, results_file):
+    from bedup.btrfs import ffi, u64_max
 
     min_generation = fs.last_tracked_generation
     top_generation = get_root_generation(volume_fd)
@@ -134,6 +140,8 @@ def track_updated_files(sess, volume_fd, results_file):
     fs.last_tracked_generation = top_generation
     sess.commit()
 
+
+def dedup(sess, fs, volume_fd, results_file):
     space_gain1 = space_gain2 = 0
 
     for comm1 in sess.query(
@@ -146,9 +154,7 @@ def track_updated_files(sess, volume_fd, results_file):
         results_file.write(
             'dupe candidates for size %d\n'
             % (comm1.size, ))
-        assert comm1.fs_id == fs.id
         for inode in comm1.inodes:
-            assert inode.fs == fs
             # XXX Need to cope with deleted inodes.
             # We cannot find them in the search-new pass,
             # not without doing some tracking of directory modifications to
@@ -252,25 +258,39 @@ def track_updated_files(sess, volume_fd, results_file):
     sess.commit()
 
 
+def cmd_scan(sess, fs, volume_fd):
+    # May raise IOError, let Python print it
+    track_updated_files(sess, fs, volume_fd, sys.stdout)
+
+
+def cmd_dedup(sess, fs, volume_fd):
+    track_updated_files(sess, fs, volume_fd, sys.stdout)
+    dedup(sess, fs, volume_fd, sys.stdout)
+
+
 def main():
-    parser = argparse.ArgumentParser(usage=__doc__.strip())
+    parser = argparse.ArgumentParser()
     parser.add_argument('volume', help='volume to search')
-    opts = parser.parse_args()
+    commands = parser.add_subparsers()
+    sp_scan = commands.add_parser('scan')
+    sp_scan.set_defaults(action=cmd_scan)
+    sp_dedup = commands.add_parser('dedup')
+    sp_dedup.set_defaults(action=cmd_dedup)
+    args = parser.parse_args()
 
-    APP_NAME = 'track-large-files'
-    DATA_DIR = xdg.BaseDirectory.save_data_path(APP_NAME)
-
+    data_dir = xdg.BaseDirectory.save_data_path(APP_NAME)
     url = sqlalchemy.engine.url.URL(
-        'sqlite', database=os.path.join(DATA_DIR, 'db.sqlite'))
+        'sqlite', database=os.path.join(data_dir, 'db.sqlite'))
     engine = sqlalchemy.engine.create_engine(url, echo=False)
     Session = sessionmaker(bind=engine)
     sess = Session()
     tracking_model.META.create_all(engine)
+    volume_fd = os.open(args.volume, os.O_DIRECTORY)
+    fs = get_fs(sess, volume_fd)
 
-    volume_fd = os.open(opts.volume, os.O_DIRECTORY)
     set_idle_priority()
-    # May raise IOError, let Python print it
-    track_updated_files(sess, volume_fd, sys.stdout)
+    return args.action(sess, fs, volume_fd)
+
 
 if __name__ == '__main__':
     sys.exit(main())
