@@ -11,7 +11,7 @@ setup(
     description='Deduplication for Btrfs filesystems',
     install_requires=[
         'argparse',  # only required for Python 2.6
-        #'cffi',  # 0.4 is not released and confuses pip
+        #'cffi >= 0.4',  # 0.4 is not released and confuses pip
         'pyxdg',
         'sqlalchemy',
     ],
