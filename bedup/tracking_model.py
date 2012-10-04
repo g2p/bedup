@@ -1,9 +1,8 @@
 
 from sqlalchemy.orm import relationship
 from sqlalchemy.orm.exc import NoResultFound
-from sqlalchemy.sql import and_, select, func
+from sqlalchemy.sql import and_, select, func, literal_column
 from sqlalchemy.ext.declarative import declarative_base, declared_attr
-from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.types import (Boolean, Integer, Binary)
 from sqlalchemy.schema import (Column, ForeignKey, UniqueConstraint)
 from zlib import adler32
@@ -78,24 +77,19 @@ class Inode(Base):
         return 'Inode(inode=%d, fs=%d)' % (self.inode, self.fs_id)
 
 
-class CommonalityMixin(object):
-    @hybrid_property
-    def is_candidate(self):
-        return (
-            self.inodes.any(has_updates=True)
-            # The simple way fails, look at orm.properties.Comparator
-            # if we need to implement this properly in SQLa
-            & (select(
-                [func.count()],
-                self.inodes.property.primaryjoin
-            ).correlate(Commonality1.__table__) > 1)
-        )
+class Commonality1(Base):
+    __table__ = select([
+        Inode.fs_id,
+        Inode.size,
+        func.count().label('inode_count'),
+        func.max('has_updates').label('has_updates'),
+    ]).group_by(
+        Inode.size,
+    ).having(and_(
+        literal_column('inode_count') > 1,
+        literal_column('has_updates') > 0,
+    )).alias()
 
-
-class Commonality1(CommonalityMixin, Base):
-    __table__ = select(
-        [Inode.fs_id, Inode.size]
-    ).group_by(Inode.size).alias()
     fs_id = Inode.fs_id
     size = Inode.size
 
@@ -107,10 +101,22 @@ class Commonality1(CommonalityMixin, Base):
         foreign_keys=list(Inode.__table__.c))
 
 
-class Commonality2(CommonalityMixin, Base):
-    __table__ = select(
-        [Inode.fs_id, Inode.size, Inode.mini_hash]
-    ).group_by(Inode.size, Inode.mini_hash).alias()
+class Commonality2(Base):
+    __table__ = select([
+        Inode.fs_id,
+        Inode.size,
+        Inode.mini_hash,
+        func.count().label('inode_count'),
+        func.max('has_updates').label('has_updates'),
+    ]).group_by(
+        Inode.size,
+        Inode.mini_hash,
+    ).having(and_(
+        Inode.mini_hash != None,
+        literal_column('inode_count') > 1,
+        literal_column('has_updates') > 0,
+    )).alias()
+
     fs_id = Inode.fs_id
     size = Inode.size
     mini_hash = Inode.mini_hash

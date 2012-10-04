@@ -53,7 +53,6 @@ def get_fs(sess, volume_fd):
         root_id=get_root_id(volume_fd))
     if fs_created:
         fs.last_tracked_generation = 0
-    sess.commit()
     return fs
 
 
@@ -148,7 +147,6 @@ def dedup(sess, fs, volume_fd, results_file):
         Commonality1
     ).filter(
         Commonality1.fs_id == fs.id,
-        Commonality1.is_candidate == True
     ):
         space_gain1 += comm1.size * (len(comm1.inodes) - 1)
         results_file.write(
@@ -175,18 +173,18 @@ def dedup(sess, fs, volume_fd, results_file):
                 # attribute and we won't get an IOError to notify us either.
                 # Inode reuse does happen (with and without inode_cache),
                 # so this branch isn't enough to rid us of all stale entries.
+                # We can also get into trouble with regular file inodes
+                # being replaced by some other kind of inode.
                 sess.delete(inode)
                 continue
             results_file.write('paths %r inode %d\n' % (paths, inode.inode))
             rfile = fopenat(volume_fd, paths[0])
             inode.mini_hash_from_file(rfile)
-    sess.commit()
 
     for comm2 in sess.query(
         Commonality2
     ).filter(
         Commonality2.fs_id == fs.id,
-        Commonality2.is_candidate == True
     ):
         space_gain2 += comm2.size * (len(comm2.inodes) - 1)
         results_file.write(
@@ -271,6 +269,9 @@ def cmd_dedup(sess, fs, volume_fd):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('volume', help='volume to search')
+    parser.add_argument(
+        '--show-sql', action='store_true', dest='show_sql',
+        help='print SQL statements being executed')
     commands = parser.add_subparsers()
     sp_scan = commands.add_parser('scan')
     sp_scan.set_defaults(action=cmd_scan)
@@ -281,7 +282,7 @@ def main():
     data_dir = xdg.BaseDirectory.save_data_path(APP_NAME)
     url = sqlalchemy.engine.url.URL(
         'sqlite', database=os.path.join(data_dir, 'db.sqlite'))
-    engine = sqlalchemy.engine.create_engine(url, echo=False)
+    engine = sqlalchemy.engine.create_engine(url, echo=args.show_sql)
     Session = sessionmaker(bind=engine)
     sess = Session()
     tracking_model.META.create_all(engine)
