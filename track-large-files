@@ -21,15 +21,15 @@ import xdg.BaseDirectory  # pyxdg, apt:python-xdg
 
 from bedup import tracking_model
 from bedup.btrfs import (
-    lookup_ino_paths, get_fsid, get_root_generation, clone_data, defragment)
+    lookup_ino_paths, get_fsid, get_root_id,
+    get_root_generation, clone_data, defragment)
 from bedup.dedup import ImmutableFDs, cmp_files
 from bedup.ioprio import set_idle_priority
 from bedup.openat import fopenat, fopenat_rw
 from bedup.tracking_model import (
-    Filesystem, InodeAndSize, MiniHash, get_or_create)
+    Filesystem, Inode, Commonality1, Commonality2, get_or_create)
 
-from sqlalchemy import func, sql
-from sqlalchemy.orm import sessionmaker, aliased
+from sqlalchemy.orm import sessionmaker
 
 BUFSIZE = 8192
 
@@ -39,9 +39,11 @@ def track_updated_files(sess, volume_fd, results_file):
 
     fs, fs_created = get_or_create(
         sess, Filesystem,
-        uuid=get_fsid(volume_fd).bytes)
+        uuid=get_fsid(volume_fd).bytes,
+        root_id=get_root_id(volume_fd))
     if fs_created:
         fs.last_tracked_generation = 0
+    sess.commit()
 
     min_generation = fs.last_tracked_generation
     top_generation = get_root_generation(volume_fd)
@@ -100,18 +102,19 @@ def track_updated_files(sess, volume_fd, results_file):
                     continue
                 if not stat.S_ISREG(mode):
                     continue
-                inode = sh.objectid
-                ias, created = get_or_create(
+                ino = sh.objectid
+                inode, created = get_or_create(
                     sess,
-                    InodeAndSize,
+                    Inode,
                     fs=fs,
-                    inode=inode,
-                    size=size)
-                names = list(lookup_ino_paths(volume_fd, inode))
+                    inode=ino)
+                inode.size = size
+                inode.has_updates = True
+                names = list(lookup_ino_paths(volume_fd, ino))
                 results_file.write(
                     'item type %d inode %d len %d'
                     ' gen0 %d gen1 %d size %d names %r mode %o\n' % (
-                        sh.type, inode, sh.len,
+                        sh.type, ino, sh.len,
                         sh.transid, found_gen, size, names,
                         mode))
         sk.min_objectid = sh.objectid
@@ -122,85 +125,66 @@ def track_updated_files(sess, volume_fd, results_file):
     fs.last_tracked_generation = top_generation
     sess.commit()
 
-    # Rename the entity to be able to self-join unambiguously
-    IAS2 = aliased(InodeAndSize)
+    space_gain1 = space_gain2 = 0
 
-    for ias in sess.query(
-        IAS2
-    ).select_from(
-        sess.query(
-            InodeAndSize.size
-        ).filter_by(
-            fs=fs
-        ).group_by(
-            InodeAndSize.size
-        ).having(
-            func.count(InodeAndSize.inode) > 1
-        ).subquery()
+    for comm1 in sess.query(
+        Commonality1
     ).filter(
-        IAS2.size == InodeAndSize.size
+        Commonality1.fs_id == fs.id,
+        Commonality1.is_candidate == True
     ):
-        # XXX Need to cope with deleted inodes.
-        # We cannot find them in the search-new pass,
-        # not without doing some tracking of directory modifications to poke
-        # updated directories to find removed elements.
+        space_gain1 += comm1.size * (len(comm1.inodes) - 1)
+        results_file.write(
+            'dupe candidates for size %d\n'
+            % (comm1.size, ))
+        assert comm1.fs_id == fs.id
+        for inode in comm1.inodes:
+            assert inode.fs == fs
+            # XXX Need to cope with deleted inodes.
+            # We cannot find them in the search-new pass,
+            # not without doing some tracking of directory modifications to
+            # poke updated directories to find removed elements.
 
-        # We need to set both fs_id, inode, and ias, despite the redundancy;
-        # ias isn't set reasonably in the mh_created case.
-        mini_hash, mh_created = get_or_create(
-            sess, MiniHash, fs_id=ias.fs_id, inode=ias.inode, ias=ias)
-
-        # rehash everytime for now
-        # I don't know enough about how inode transaction numbers
-        # are updated (as opposed to extent updates)
-        # to be able to actually cache the result
-        try:
-            paths = list(lookup_ino_paths(volume_fd, ias.inode))
-        except IOError as e:
-            if e.errno != errno.ENOENT:
-                raise
-            # We have a stale record for a removed inode
-            # XXX If an inode number is reused and the second instance is
-            # below the size cutoff, we won't update the InodeAndSize
-            # record and we won't get an IOError to notify us either.
-            # Inode reuse does happen (with and without inode_cache),
-            # so this branch isn't enough to rid us of all stale entries.
-            if mh_created:
-                sess.expunge(mini_hash)
-            else:
-                sess.delete(mini_hash)
-            sess.delete(ias)
-            continue
-        rfile = fopenat(volume_fd, paths[0])
-        mini_hash.update_from_file(rfile)
+            # rehash everytime for now
+            # I don't know enough about how inode transaction numbers
+            # are updated (as opposed to extent updates)
+            # to be able to actually cache the result
+            try:
+                paths = list(lookup_ino_paths(volume_fd, inode.inode))
+            except IOError as e:
+                if e.errno != errno.ENOENT:
+                    raise
+                # We have a stale record for a removed inode
+                # XXX If an inode number is reused and the second instance is
+                # below the size cutoff, we won't update the .size
+                # attribute and we won't get an IOError to notify us either.
+                # Inode reuse does happen (with and without inode_cache),
+                # so this branch isn't enough to rid us of all stale entries.
+                sess.delete(inode)
+                continue
+            results_file.write('paths %r inode %d\n' % (paths, inode.inode))
+            rfile = fopenat(volume_fd, paths[0])
+            inode.mini_hash_from_file(rfile)
     sess.commit()
 
-    for (mini_hash, size, inodes) in sess.query(
-        MiniHash.mini_hash,
-        InodeAndSize.size,
-        func.group_concat(MiniHash.inode)
+    for comm2 in sess.query(
+        Commonality2
     ).filter(
-        InodeAndSize.inode == MiniHash.inode,
-        InodeAndSize.fs_id == MiniHash.fs_id,
-        InodeAndSize.fs == fs,
-    ).group_by(
-        InodeAndSize.size,
-        MiniHash.mini_hash
-    ).having(
-        func.count(InodeAndSize.inode) > 1
+        Commonality2.fs_id == fs.id,
+        Commonality2.is_candidate == True
     ):
-        inodes = map(int, inodes.split(','))
+        space_gain2 += comm2.size * (len(comm2.inodes) - 1)
         results_file.write(
-            'dupe candidates for size %d and mini_hash %x\n'
-            % (size, mini_hash))
+            'dupe candidates for size %d and mini_hash %#x\n'
+            % (comm2.size, comm2.mini_hash))
         files = []
         fds = []
         fd_names = {}
         by_hash = collections.defaultdict(list)
 
-        for inode in inodes:
-            paths = list(lookup_ino_paths(volume_fd, inode))
-            results_file.write('inode %d paths %s\n' % (inode, paths))
+        for inode in comm2.inodes:
+            paths = list(lookup_ino_paths(volume_fd, inode.inode))
+            results_file.write('inode %d paths %s\n' % (inode.inode, paths))
             # Open everything rw, we don't know which
             # can be a read-only source yet.
             # We may also want to defragment the source.
@@ -251,28 +235,11 @@ def track_updated_files(sess, volume_fd, results_file):
                         sname, dname))
                     clone_data(dest=dfd, src=sfd)
 
-    impact_q1 = sess.query(
-        (
-            (func.count(InodeAndSize.inode) - 1) * InodeAndSize.size
-        ).label('impact')
-    ).filter(
-        InodeAndSize.inode == MiniHash.inode,
-        InodeAndSize.fs_id == MiniHash.fs_id == fs.id,
-    ).group_by(
-        InodeAndSize.size,
-        MiniHash.mini_hash
-    ).having(
-        # Not strictly necessary, singletons would be *0 above anyway
-        func.count(InodeAndSize.inode) > 1
-    )
-    impact_q2 = sess.query(
-        func.sum(sql.literal_column('impact'))
-    ).select_from(impact_q1.subquery())
-    if False:
-        potential_space_gain = sum(i for (i,) in impact_q1)
-    else:
-        potential_space_gain = impact_q2.scalar()
-    results_file.write('Potential space gain: %d\n' % potential_space_gain)
+    results_file.write(
+        'Potential space gain: pass 1 %d, pass 2 %d\n' % (
+            space_gain1, space_gain2))
+
+    Inode.__table__.update().values(has_updates=False)
 
 
 parser = argparse.ArgumentParser(usage=__doc__.strip())

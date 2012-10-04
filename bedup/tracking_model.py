@@ -1,10 +1,11 @@
 
 from sqlalchemy.orm import relationship
 from sqlalchemy.orm.exc import NoResultFound
-from sqlalchemy.sql import and_
+from sqlalchemy.sql import and_, select, func
 from sqlalchemy.ext.declarative import declarative_base, declared_attr
-from sqlalchemy.types import (Integer, Binary)
-from sqlalchemy import (Column, ForeignKey)
+from sqlalchemy.ext.hybrid import hybrid_property
+from sqlalchemy.types import (Boolean, Integer, Binary)
+from sqlalchemy.schema import (Column, ForeignKey, UniqueConstraint)
 from zlib import adler32
 
 
@@ -16,26 +17,6 @@ def FK(cattr, primary_key=False, backref=None, nullable=False):
             primary_key=primary_key,
             nullable=nullable),
         relationship(cattr.parententity, backref=backref))
-
-
-def FK2(entity, primary_key=False, backref=None, nullable=False):
-    # We could also return a composite column rather than multiple columns,
-    # but that may require a dynamically built class for the column type.
-    def gen_fk_cols():
-        for col in entity.__table__.primary_key:
-            yield Column(
-                col.type, ForeignKey(col),
-                primary_key=primary_key,
-                nullable=nullable)
-    fk_cols = list(gen_fk_cols())
-    join_conditions = list(
-        col1 == col2
-        for (col1, col2) in zip(entity.__table__.primary_key, fk_cols))
-    rel = relationship(
-        entity, backref=backref, uselist=False,
-        primaryjoin=and_(*join_conditions),
-    )
-    return fk_cols, rel
 
 
 # XXX I actually need create_or_update here
@@ -56,37 +37,93 @@ class SuperBase(object):
 Base = declarative_base(cls=SuperBase)
 
 
+# XXX Actually a subvolume
 class Filesystem(Base):
     # SmallInteger might be preferrable here,
     # but would require reimplementing an autoincrement
     # sequence outside of sqlite
     id = Column(Integer, primary_key=True)
-    __table_args__ = dict(sqlite_autoincrement=True)
-    uuid = Column(Binary(16), unique=True, nullable=False)
+    __table_args__ = (
+        UniqueConstraint(
+            'uuid', 'root_id'),
+        dict(
+            sqlite_autoincrement=True))
+    uuid = Column(Binary(16), nullable=False)
+    root_id = Column(Integer, nullable=False)
     last_tracked_generation = Column(Integer, nullable=False)
 
 
-class InodeAndSize(Base):
+class Inode(Base):
     fs_id, fs = FK(Filesystem.id, primary_key=True)
     inode = Column(Integer, primary_key=True)
+    # We learn the size at the same time as inode number,
+    # and it's the first criterion we'll use, so not nullable
     size = Column(Integer, index=True, nullable=False)
+    mini_hash = Column(Integer, index=True, nullable=True)
 
-    def __repr__(self):
-        return 'InodeAndSize(inode=%r, size=%r)' % (self.inode, self.size)
+    # has_updates gets set whenever this inode
+    # appears in the fs scan, and reset whenever we do
+    # a dedup pass.
+    has_updates = Column(Boolean, index=True, nullable=False)
 
-
-class MiniHash(Base):
-    (fs_id, inode), ias = FK2(InodeAndSize, primary_key=True)
-    mini_hash = Column(Integer, nullable=False)
-
-    def update_from_file(self, rfile):
+    def mini_hash_from_file(self, rfile):
         # A very cheap, very partial hash for quick disambiguation
         # Won't help with things like zeroed or sparse files.
         # The mini_hash for those is 0x10000001
-        rfile.seek(int(self.ias.size * .3))
+        rfile.seek(int(self.size * .3))
         # bitops to make unsigned, for better readability
         self.mini_hash = adler32(rfile.read(4096)) & 0xffffffff
 
+    def __repr__(self):
+        return 'Inode(inode=%d, fs=%d)' % (self.inode, self.fs_id)
+
+
+class CommonalityMixin(object):
+    @hybrid_property
+    def is_candidate(self):
+        return (
+            self.inodes.any(has_updates=True)
+            # The simple way fails, look at orm.properties.Comparator
+            # if we need to implement this properly in SQLa
+            & (select(
+                [func.count()],
+                self.inodes.property.primaryjoin
+            ).correlate(Commonality1.__table__) > 1)
+        )
+
+
+class Commonality1(CommonalityMixin, Base):
+    __table__ = select(
+        [Inode.fs_id, Inode.size]
+    ).group_by(Inode.size).alias()
+    fs_id = Inode.fs_id
+    size = Inode.size
+
+    inodes = relationship(
+        Inode,
+        primaryjoin=and_(
+            __table__.c.fs_id == Inode.fs_id,
+            __table__.c.size == Inode.size),
+        foreign_keys=list(Inode.__table__.c))
+
+
+class Commonality2(CommonalityMixin, Base):
+    __table__ = select(
+        [Inode.fs_id, Inode.size, Inode.mini_hash]
+    ).group_by(Inode.size, Inode.mini_hash).alias()
+    fs_id = Inode.fs_id
+    size = Inode.size
+    mini_hash = Inode.mini_hash
+
+    inodes = relationship(
+        Inode,
+        primaryjoin=and_(
+            __table__.c.fs_id == Inode.fs_id,
+            __table__.c.size == Inode.size,
+            __table__.c.mini_hash == Inode.mini_hash),
+        foreign_keys=list(Inode.__table__.c))
+
+# Commonality3 would be a crypto hash, but it's not part of this model atm
 
 META = Base.metadata
 
