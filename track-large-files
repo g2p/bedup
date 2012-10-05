@@ -23,7 +23,7 @@ from bedup import tracking_model
 from bedup.btrfs import (
     lookup_ino_paths, get_fsid, get_root_id,
     get_root_generation, clone_data, defragment)
-from bedup.dedup import ImmutableFDs, cmp_files
+from bedup.dedup import ImmutableFDs, cmp_files, dedup_same
 from bedup.ioprio import set_idle_priority
 from bedup.openat import fopenat, fopenat_rw
 from bedup.tracking_model import (
@@ -264,29 +264,19 @@ def dedup(sess, fs, volume_fd, results_file):
     sess.commit()
 
 
-def cmd_scan(sess, fs, volume_fd):
-    # May raise IOError, let Python print it
-    track_updated_files(sess, fs, volume_fd, sys.stdout)
+def cmd_dedup_files(args):
+    return dedup_same(args.source, args.dests, args.defragment)
 
 
-def cmd_dedup(sess, fs, volume_fd):
-    track_updated_files(sess, fs, volume_fd, sys.stdout)
-    dedup(sess, fs, volume_fd, sys.stdout)
+def cmd_scan_vol(args):
+    return vol_cmd(args, scan_only=True)
 
 
-def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument('volume', help='volume to search')
-    parser.add_argument(
-        '--show-sql', action='store_true', dest='show_sql',
-        help='print SQL statements being executed')
-    commands = parser.add_subparsers()
-    sp_scan = commands.add_parser('scan')
-    sp_scan.set_defaults(action=cmd_scan)
-    sp_dedup = commands.add_parser('dedup')
-    sp_dedup.set_defaults(action=cmd_dedup)
-    args = parser.parse_args()
+def cmd_dedup_vol(args):
+    return vol_cmd(args, scan_only=False)
 
+
+def vol_cmd(sess, fs, volume_fd, scan_only):
     data_dir = xdg.BaseDirectory.save_data_path(APP_NAME)
     url = sqlalchemy.engine.url.URL(
         'sqlite', database=os.path.join(data_dir, 'db.sqlite'))
@@ -298,7 +288,50 @@ def main():
     fs = get_fs(sess, volume_fd)
 
     set_idle_priority()
-    return args.action(sess, fs, volume_fd)
+    # May raise IOError, let Python print it
+    track_updated_files(sess, fs, volume_fd, sys.stdout)
+
+    if not scan_only:
+        dedup(sess, fs, volume_fd, sys.stdout)
+
+
+def vol_flags(parser):
+    parser.add_argument('volume', help='volume to search')
+    parser.add_argument(
+        '--show-sql', action='store_true', dest='show_sql',
+        help='print SQL statements being executed')
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    commands = parser.add_subparsers()
+
+    sp_scan_vol = commands.add_parser('scan-vol')
+    sp_scan_vol.set_defaults(action=cmd_scan_vol)
+    vol_flags(sp_scan_vol)
+
+    sp_dedup_vol = commands.add_parser('dedup-vol')
+    sp_dedup_vol.set_defaults(action=cmd_dedup_vol)
+    vol_flags(sp_dedup_vol)
+
+    sp_dedup_files = commands.add_parser(
+        'dedup-files', description="""
+Freezes files, checks them for being identical,
+and projects the extents of the first file onto the other files.
+
+The effects are visible with filefrag -v (apt:e2fsprogs),
+which displays the extent map of files.
+        """.strip())
+    sp_dedup_files.set_defaults(action=cmd_dedup_files)
+    sp_dedup_files.add_argument('source', metavar='SRC', help='source file')
+    sp_dedup_files.add_argument(
+        'dests', metavar='DEST', nargs='+', help='dest files')
+    sp_dedup_files.add_argument(
+        '--defragment', action='store_true',
+        help='defragment the source file first')
+
+    args = parser.parse_args()
+    return args.action(args)
 
 
 if __name__ == '__main__':
