@@ -1,3 +1,4 @@
+# A workaround for Python2.6
 
 import sys
 from .__main__ import main
