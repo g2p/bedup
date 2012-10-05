@@ -323,6 +323,10 @@ def lookup_ino_paths(volume_fd, ino):
 
 def get_fsid(volume_fd):
     args = ffi.new('struct btrfs_ioctl_fs_info_args *')
+    # This works around the CFFI bug, but we encounter the same bug
+    # again everytime we use ioctl. Just say no.
+    if False:
+        args.fsid[0] = 1
     fcntl.ioctl(volume_fd, lib.BTRFS_IOC_FS_INFO, ffi.buffer(args))
     # Somehow with Python2.6 we end up with all zeroes
     # Probably a bug in CFFI tip.
