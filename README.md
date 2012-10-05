@@ -25,10 +25,10 @@ There are a few other Python dependencies:
 
 You'll see a list of supported commands.
 
-* *scan-vol* scans a subvolume to keep track of potentially duplicated files.
-* *dedup-vol* runs scan-vol, then deduplicates identical files.
-* *dedup-files* takes a list of identical files and deduplicates them.
-* *find-new* is a reimplementation of the `btrfs find-new` command.
+* **scan-vol** scans a subvolume to keep track of potentially duplicated files.
+* **dedup-vol** runs scan-vol, then deduplicates identical files.
+* **dedup-files** takes a list of identical files and deduplicates them.
+* **find-new** is a reimplementation of the `btrfs find-new` command.
 
 To deduplicate a mounted btrfs volume:
 
@@ -50,6 +50,8 @@ allows for cloning data from one file to the other. The cloned ranges
 become shared on disk, saving space. File metadata isn't affected, and
 later changes to one file won't affect the other (this is unlike hard-linking).
 
+## Locking
+
 Before cloning, we need to lock the files so that their contents don't change
 from the time the data is compared to the time it is cloned.
 Implementation note:
@@ -63,11 +65,18 @@ This locking process might not be fool-proof in all cases;
 for example a malicious application might manage to bypass it,
 which would allow it to change the contents of files it doesn't have
 access to.
+
 There is also a small time window when an application will get permission
 errors, if it tries to get write access to a file we have already
 started to deduplicate.
+
 Finally, a system crash at the wrong time could leave some files immutable;
 fix them using the `chattr -i` command.
+
+## Subvolumes
+
+The clone call is considered a write operation, it won't work on read-only
+snapshots.
 
 Another limitation of the clone call is that it won't work across subvolumes.
 It does have that in common with hard-linking.
