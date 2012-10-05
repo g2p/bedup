@@ -37,7 +37,7 @@ To deduplicate a mounted btrfs volume:
 bedup will not recurse into subvolumes, call it multiple times if necessary.
 You can get a list of btrfs subvolumes with:
 
-    sudo btrfs subvolume list /mnt/some-btrfs-filesystem
+    sudo btrfs subvolume list /mnt/btrfs
 
 The first run can take some time.
 Subsequent runs will only scan and deduplicate
