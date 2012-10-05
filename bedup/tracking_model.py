@@ -3,8 +3,9 @@ from sqlalchemy.orm import relationship
 from sqlalchemy.orm.exc import NoResultFound
 from sqlalchemy.sql import and_, select, func, literal_column
 from sqlalchemy.ext.declarative import declarative_base, declared_attr
-from sqlalchemy.types import (Boolean, Integer, Binary)
-from sqlalchemy.schema import (Column, ForeignKey, UniqueConstraint)
+from sqlalchemy.types import (Boolean, Integer, Text)
+from sqlalchemy.schema import (
+    Column, ForeignKey, UniqueConstraint, CheckConstraint)
 from zlib import adler32
 
 
@@ -48,7 +49,7 @@ class Filesystem(Base):
         dict(
             sqlite_autoincrement=True))
     uuid = Column(
-        Binary(16), nullable=False, CheckConstraint("uuid != ''"))
+        Text, CheckConstraint("uuid != ''"), nullable=False)
     root_id = Column(Integer, nullable=False)
     last_tracked_generation = Column(Integer, nullable=False)
 

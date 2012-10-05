@@ -41,10 +41,12 @@ SIZE_CUTOFF = 8 * 1024 ** 2
 def get_fs(sess, volume_fd):
     fs, fs_created = get_or_create(
         sess, Filesystem,
-        uuid=get_fsid(volume_fd).bytes,
+        uuid=str(get_fsid(volume_fd)),
         root_id=get_root_id(volume_fd))
     if fs_created:
         fs.last_tracked_generation = 0
+    # Catch the uuid bug early with a check constraint
+    sess.commit()
     return fs
 
 
