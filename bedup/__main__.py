@@ -21,7 +21,7 @@ import xdg.BaseDirectory  # pyxdg, apt:python-xdg
 
 from .btrfs import (
     lookup_ino_paths, get_fsid, get_root_id,
-    get_root_generation, clone_data, defragment)
+    get_root_generation, clone_data, defragment, find_new)
 from .dedup import ImmutableFDs, cmp_files, dedup_same
 from .ioprio import set_idle_priority
 from .openat import fopenat, fopenat_rw
@@ -267,6 +267,12 @@ def cmd_dedup_files(args):
     return dedup_same(args.source, args.dests, args.defragment)
 
 
+def cmd_find_new(args):
+    volume_fd = os.open(args.volume, os.O_DIRECTORY)
+    # May raise FindError, let Python print it
+    find_new(volume_fd, args.generation, sys.stdout)
+
+
 def cmd_scan_vol(args):
     return vol_cmd(args, scan_only=True)
 
@@ -328,6 +334,18 @@ which displays the extent map of files.
     sp_dedup_files.add_argument(
         '--defragment', action='store_true',
         help='defragment the source file first')
+
+    sp_find_new = commands.add_parser(
+        'find-new', description="""
+lists changes to volume since generation
+
+This is a reimplementation of btrfs find-new,
+modified to include directories as well.""")
+    sp_find_new.set_defaults(action=cmd_find_new)
+    sp_find_new.add_argument('volume', help='volume to search')
+    sp_find_new.add_argument(
+        'generation', type=int, nargs='?', default=0,
+        help='only show items modified at generation or a newer transaction')
 
     args = parser.parse_args()
     return args.action(args)
