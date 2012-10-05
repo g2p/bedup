@@ -19,15 +19,14 @@ import stat
 import sys
 import xdg.BaseDirectory  # pyxdg, apt:python-xdg
 
-from bedup import tracking_model
-from bedup.btrfs import (
+from .btrfs import (
     lookup_ino_paths, get_fsid, get_root_id,
     get_root_generation, clone_data, defragment)
-from bedup.dedup import ImmutableFDs, cmp_files, dedup_same
-from bedup.ioprio import set_idle_priority
-from bedup.openat import fopenat, fopenat_rw
-from bedup.tracking_model import (
-    Filesystem, Inode, Commonality1, Commonality2, get_or_create)
+from .dedup import ImmutableFDs, cmp_files, dedup_same
+from .ioprio import set_idle_priority
+from .openat import fopenat, fopenat_rw
+from .tracking_model import (
+    Filesystem, Inode, Commonality1, Commonality2, get_or_create, META)
 
 from sqlalchemy.orm import sessionmaker
 
@@ -57,7 +56,7 @@ def get_fs(sess, volume_fd):
 
 
 def track_updated_files(sess, fs, volume_fd, results_file):
-    from bedup.btrfs import ffi, u64_max
+    from .btrfs import ffi, u64_max
 
     min_generation = fs.last_tracked_generation
     top_generation = get_root_generation(volume_fd)
@@ -283,7 +282,7 @@ def vol_cmd(args, scan_only):
     engine = sqlalchemy.engine.create_engine(url, echo=args.show_sql)
     Session = sessionmaker(bind=engine)
     sess = Session()
-    tracking_model.META.create_all(engine)
+    META.create_all(engine)
     volume_fd = os.open(args.volume, os.O_DIRECTORY)
     fs = get_fs(sess, volume_fd)
 
