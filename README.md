@@ -69,3 +69,6 @@ started to deduplicate.
 Finally, a system crash at the wrong time could leave some files immutable;
 fix them using the `chattr -i` command.
 
+Another limitation of the clone call is that it won't work across subvolumes.
+It does have that in common with hard-linking.
+
