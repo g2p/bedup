@@ -68,13 +68,14 @@ def fiemap(fd):
     Gets a map of file extents.
     """
 
-    fiemap_cbuf = ffi.new('char[4096]')
+    count = 72
+    fiemap_cbuf = ffi.new(
+        'char[]',
+        ffi.sizeof('struct fiemap')
+        + count * ffi.sizeof('struct fiemap_extent'))
     fiemap_pybuf = ffi.buffer(fiemap_cbuf)
     fiemap_ptr = ffi.cast('struct fiemap*', fiemap_cbuf)
-    # How many fm_extents we have room for in our buffer
-    count = (ffi.sizeof(fiemap_cbuf) - ffi.sizeof('struct fiemap')
-                ) // ffi.sizeof('struct fiemap_extent')
-    assert count == 72, count  # checked against the filefrag code
+    assert ffi.sizeof(fiemap_cbuf) <= 4096
 
     while True:
         fiemap_ptr.fm_length = lib.FIEMAP_MAX_OFFSET
