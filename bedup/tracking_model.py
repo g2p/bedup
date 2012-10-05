@@ -47,7 +47,8 @@ class Filesystem(Base):
             'uuid', 'root_id'),
         dict(
             sqlite_autoincrement=True))
-    uuid = Column(Binary(16), nullable=False)
+    uuid = Column(
+        Binary(16), nullable=False, CheckConstraint("uuid != ''"))
     root_id = Column(Integer, nullable=False)
     last_tracked_generation = Column(Integer, nullable=False)
 
