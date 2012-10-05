@@ -49,14 +49,15 @@ def get_vol(sess, volume_fd):
         vol.last_tracked_generation = 0
     # Catch the uuid bug early with a check constraint
     sess.commit()
+    vol.fd = volume_fd
     return vol
 
 
-def track_updated_files(sess, vol, volume_fd, results_file):
+def track_updated_files(sess, vol, results_file):
     from .btrfs import ffi, u64_max
 
     min_generation = vol.last_tracked_generation
-    top_generation = get_root_generation(volume_fd)
+    top_generation = get_root_generation(vol.fd)
     results_file.write(
         'generations %d %d\n' % (min_generation, top_generation))
 
@@ -86,7 +87,7 @@ def track_updated_files(sess, vol, volume_fd, results_file):
 
         try:
             fcntl.ioctl(
-                volume_fd, lib.BTRFS_IOC_TREE_SEARCH, args_buffer)
+                vol.fd, lib.BTRFS_IOC_TREE_SEARCH, args_buffer)
         except IOError:
             raise
 
@@ -120,7 +121,7 @@ def track_updated_files(sess, vol, volume_fd, results_file):
                     inode=ino)
                 inode.size = size
                 inode.has_updates = True
-                names = list(lookup_ino_paths(volume_fd, ino))
+                names = list(lookup_ino_paths(vol.fd, ino))
                 results_file.write(
                     'item type %d inode %d len %d'
                     ' gen0 %d gen1 %d size %d names %r mode %o\n' % (
@@ -136,7 +137,7 @@ def track_updated_files(sess, vol, volume_fd, results_file):
     sess.commit()
 
 
-def dedup(sess, vol, volume_fd, results_file):
+def dedup(sess, vol, results_file):
     space_gain1 = space_gain2 = 0
 
     for comm1 in sess.query(
@@ -159,7 +160,7 @@ def dedup(sess, vol, volume_fd, results_file):
             # are updated (as opposed to extent updates)
             # to be able to actually cache the result
             try:
-                paths = list(lookup_ino_paths(volume_fd, inode.inode))
+                paths = list(lookup_ino_paths(vol.fd, inode.inode))
             except IOError as e:
                 if e.errno != errno.ENOENT:
                     raise
@@ -174,7 +175,7 @@ def dedup(sess, vol, volume_fd, results_file):
                 sess.delete(inode)
                 continue
             #results_file.write('paths %r inode %d\n' % (paths, inode.inode))
-            rfile = fopenat(volume_fd, paths[0])
+            rfile = fopenat(vol.fd, paths[0])
             inode.mini_hash_from_file(rfile)
 
     for comm2 in sess.query(
@@ -192,13 +193,13 @@ def dedup(sess, vol, volume_fd, results_file):
         by_hash = collections.defaultdict(list)
 
         for inode in comm2.inodes:
-            paths = list(lookup_ino_paths(volume_fd, inode.inode))
+            paths = list(lookup_ino_paths(vol.fd, inode.inode))
             #results_file.write('inode %d paths %s\n' % (inode.inode, paths))
             # Open everything rw, we don't know which
             # can be a read-only source yet.
             # We may also want to defragment the source.
             try:
-                afile = fopenat_rw(volume_fd, paths[0])
+                afile = fopenat_rw(vol.fd, paths[0])
             except IOError as e:
                 # File contains the image of a running process,
                 # we can't open it in write mode.
@@ -291,10 +292,10 @@ def vol_cmd(args, scan_only):
 
     set_idle_priority()
     # May raise IOError, let Python print it
-    track_updated_files(sess, vol, volume_fd, sys.stdout)
+    track_updated_files(sess, vol, sys.stdout)
 
     if not scan_only:
-        dedup(sess, vol, volume_fd, sys.stdout)
+        dedup(sess, vol, sys.stdout)
 
 
 def vol_flags(parser):
