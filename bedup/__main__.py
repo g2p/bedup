@@ -276,7 +276,7 @@ def cmd_dedup_vol(args):
     return vol_cmd(args, scan_only=False)
 
 
-def vol_cmd(sess, fs, volume_fd, scan_only):
+def vol_cmd(args, scan_only):
     data_dir = xdg.BaseDirectory.save_data_path(APP_NAME)
     url = sqlalchemy.engine.url.URL(
         'sqlite', database=os.path.join(data_dir, 'db.sqlite'))
