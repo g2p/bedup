@@ -1,13 +1,6 @@
 #!/usr/bin/env python
 # vim: set fileencoding=utf-8 sw=4 ts=4 et :
 
-"""
-track-large-files
-
-Keeps track of large files.
-Maintains a size -> inode lookup table.
-"""
-
 import argparse
 import collections
 import errno
@@ -31,7 +24,7 @@ from .tracking_model import (
 from sqlalchemy.orm import sessionmaker
 
 
-APP_NAME = 'track-large-files'
+APP_NAME = 'bedup'
 
 BUFSIZE = 8192
 
