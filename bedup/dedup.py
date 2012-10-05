@@ -82,7 +82,7 @@ def dedup_same(source, dests, defragment=False):
         for fd in dest_fds:
             if not cmp_fds(source_fd, fd):
                 raise FilesDifferError(fd_names[source_fd], fd_names[fd])
-            clone_data(dest=fd, src=source_fd)
+            clone_data(dest=fd, src=source_fd, check_first=not defragment)
 
 
 PROC_PATH_RE = re.compile(r'^/proc/(\d+)/fd/(\d+)$')

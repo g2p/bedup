@@ -4,6 +4,7 @@ import cffi
 import fcntl
 import uuid
 
+from .fiemap import same_extents
 
 from os import getcwd  # XXX
 
@@ -382,8 +383,11 @@ def get_root_generation(volume_fd):
 
 
 # clone_data and defragment also have _RANGE variants
-def clone_data(dest, src):
+def clone_data(dest, src, check_first):
+    if check_first and same_extents(dest, src):
+        return False
     fcntl.ioctl(dest, lib.BTRFS_IOC_CLONE, src)
+    return True
 
 
 def defragment(fd):

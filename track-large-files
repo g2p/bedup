@@ -177,7 +177,7 @@ def dedup(sess, fs, volume_fd, results_file):
                 # being replaced by some other kind of inode.
                 sess.delete(inode)
                 continue
-            results_file.write('paths %r inode %d\n' % (paths, inode.inode))
+            #results_file.write('paths %r inode %d\n' % (paths, inode.inode))
             rfile = fopenat(volume_fd, paths[0])
             inode.mini_hash_from_file(rfile)
 
@@ -197,7 +197,7 @@ def dedup(sess, fs, volume_fd, results_file):
 
         for inode in comm2.inodes:
             paths = list(lookup_ino_paths(volume_fd, inode.inode))
-            results_file.write('inode %d paths %s\n' % (inode.inode, paths))
+            #results_file.write('inode %d paths %s\n' % (inode.inode, paths))
             # Open everything rw, we don't know which
             # can be a read-only source yet.
             # We may also want to defragment the source.
@@ -244,9 +244,13 @@ def dedup(sess, fs, volume_fd, results_file):
                             sname, dname))
                         assert False, (sname, dname)
                         continue
-                    results_file.write('Will dedup: %r %r\n' % (
-                        sname, dname))
-                    clone_data(dest=dfd, src=sfd)
+                    if clone_data(dest=dfd, src=sfd, check_first=True):
+                        results_file.write(
+                            'Did dedup: %r %r\n' % (sname, dname))
+                    else:
+                        results_file.write(
+                            'Did not dedup (same extents): %r %r\n' % (
+                                sname, dname))
 
     results_file.write(
         'Potential space gain: pass 1 %d, pass 2 %d\n' % (
