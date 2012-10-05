@@ -38,7 +38,7 @@ SIZE_CUTOFF = 16 * 1024 ** 2
 SIZE_CUTOFF = 8 * 1024 ** 2
 
 
-def get_vol(sess, volume_fd):
+def get_vol(sess, volume_fd, desc):
     fs, fs_created = get_or_create(
         sess, Filesystem,
         uuid=str(get_fsid(volume_fd)))
@@ -50,6 +50,7 @@ def get_vol(sess, volume_fd):
     # Catch the uuid bug early with a check constraint
     sess.commit()
     vol.fd = volume_fd
+    vol.desc = desc
     return vol
 
 
@@ -288,12 +289,13 @@ def vol_cmd(args, scan_only):
     sess = Session()
     META.create_all(engine)
 
-    volumes = [get_vol(sess, os.open(volpath, os.O_DIRECTORY))
+    # Only use the path as a description, it is liable to change.
+    volumes = [get_vol(sess, os.open(volpath, os.O_DIRECTORY), desc=volpath)
                for volpath in args.volume]
 
     set_idle_priority()
-    # May raise IOError
     for vol in volumes:
+        # May raise IOError
         track_updated_files(sess, vol, sys.stdout)
 
     if not scan_only:
