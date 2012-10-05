@@ -78,6 +78,5 @@ fix them using the `chattr -i` command.
 The clone call is considered a write operation, it won't work on read-only
 snapshots.
 
-Another limitation of the clone call is that it won't work across subvolumes.
-It does have that in common with hard-linking.
+Before Linux 3.6, the clone call didn't work across subvolumes.
 
