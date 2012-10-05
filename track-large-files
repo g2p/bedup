@@ -91,7 +91,7 @@ def track_updated_files(sess, fs, volume_fd, results_file):
         try:
             fcntl.ioctl(
                 volume_fd, lib.BTRFS_IOC_TREE_SEARCH, args_buffer)
-        except IOError as e:
+        except IOError:
             raise
 
         if sk.nr_items == 0:
@@ -252,7 +252,11 @@ def dedup(sess, fs, volume_fd, results_file):
         'Potential space gain: pass 1 %d, pass 2 %d\n' % (
             space_gain1, space_gain2))
 
-    sess.execute(Inode.__table__.update().where(Inode.fs==fs).values(has_updates=False))
+    sess.execute(
+        Inode.__table__.update().where(
+            Inode.fs == fs
+        ).values(
+            has_updates=False))
     sess.commit()
 
 
