@@ -287,19 +287,22 @@ def vol_cmd(args, scan_only):
     Session = sessionmaker(bind=engine)
     sess = Session()
     META.create_all(engine)
-    volume_fd = os.open(args.volume, os.O_DIRECTORY)
-    vol = get_vol(sess, volume_fd)
+
+    volumes = [get_vol(sess, os.open(volpath, os.O_DIRECTORY))
+               for volpath in args.volume]
 
     set_idle_priority()
-    # May raise IOError, let Python print it
-    track_updated_files(sess, vol, sys.stdout)
+    # May raise IOError
+    for vol in volumes:
+        track_updated_files(sess, vol, sys.stdout)
 
     if not scan_only:
-        dedup(sess, vol, sys.stdout)
+        for vol in volumes:
+            dedup(sess, vol, sys.stdout)
 
 
 def vol_flags(parser):
-    parser.add_argument('volume', help='volume to search')
+    parser.add_argument('volume', nargs='+', help='btrfs volumes')
     parser.add_argument(
         '--show-sql', action='store_true', dest='show_sql',
         help='print SQL statements being executed')
