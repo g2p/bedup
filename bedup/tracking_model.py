@@ -91,6 +91,12 @@ class Commonality1(Base):
         literal_column('has_updates') > 0,
     )).alias()
 
+    __mapper_args__ = (
+        dict(primary_key=[
+            __table__.c.fs_id,
+            __table__.c.size,
+        ]))
+
     fs_id = Inode.fs_id
     size = Inode.size
 
@@ -118,6 +124,13 @@ class Commonality2(Base):
         literal_column('inode_count') > 1,
         literal_column('has_updates') > 0,
     )).alias()
+
+    __mapper_args__ = (
+        dict(primary_key=[
+            __table__.c.fs_id,
+            __table__.c.size,
+            __table__.c.mini_hash,
+        ]))
 
     fs_id = Inode.fs_id
     size = Inode.size

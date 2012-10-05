@@ -145,8 +145,8 @@ def dedup(sess, fs, volume_fd, results_file):
 
     for comm1 in sess.query(
         Commonality1
-    ).filter(
-        Commonality1.fs_id == fs.id,
+    ).filter_by(
+        fs_id=fs.id,
     ):
         space_gain1 += comm1.size * (len(comm1.inodes) - 1)
         results_file.write(
@@ -183,8 +183,8 @@ def dedup(sess, fs, volume_fd, results_file):
 
     for comm2 in sess.query(
         Commonality2
-    ).filter(
-        Commonality2.fs_id == fs.id,
+    ).filter_by(
+        fs_id=fs.id,
     ):
         space_gain2 += comm2.size * (len(comm2.inodes) - 1)
         results_file.write(
