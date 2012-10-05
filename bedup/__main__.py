@@ -19,7 +19,7 @@ from .dedup import ImmutableFDs, cmp_files, dedup_same
 from .ioprio import set_idle_priority
 from .openat import fopenat, fopenat_rw
 from .tracking_model import (
-    Filesystem, Inode, Commonality1, Commonality2, get_or_create, META)
+    Filesystem, Volume, Inode, Commonality1, Commonality2, get_or_create, META)
 
 from sqlalchemy.orm import sessionmaker
 
@@ -38,22 +38,24 @@ SIZE_CUTOFF = 16 * 1024 ** 2
 SIZE_CUTOFF = 8 * 1024 ** 2
 
 
-def get_fs(sess, volume_fd):
+def get_vol(sess, volume_fd):
     fs, fs_created = get_or_create(
         sess, Filesystem,
-        uuid=str(get_fsid(volume_fd)),
-        root_id=get_root_id(volume_fd))
-    if fs_created:
-        fs.last_tracked_generation = 0
+        uuid=str(get_fsid(volume_fd)))
+    vol, vol_created = get_or_create(
+        sess, Volume,
+        fs=fs, root_id=get_root_id(volume_fd))
+    if vol_created:
+        vol.last_tracked_generation = 0
     # Catch the uuid bug early with a check constraint
     sess.commit()
-    return fs
+    return vol
 
 
-def track_updated_files(sess, fs, volume_fd, results_file):
+def track_updated_files(sess, vol, volume_fd, results_file):
     from .btrfs import ffi, u64_max
 
-    min_generation = fs.last_tracked_generation
+    min_generation = vol.last_tracked_generation
     top_generation = get_root_generation(volume_fd)
     results_file.write(
         'generations %d %d\n' % (min_generation, top_generation))
@@ -114,7 +116,7 @@ def track_updated_files(sess, fs, volume_fd, results_file):
                 inode, created = get_or_create(
                     sess,
                     Inode,
-                    fs=fs,
+                    vol=vol,
                     inode=ino)
                 inode.size = size
                 inode.has_updates = True
@@ -130,17 +132,17 @@ def track_updated_files(sess, fs, volume_fd, results_file):
         sk.min_offset = sh.offset
 
         sk.min_offset += 1
-    fs.last_tracked_generation = top_generation
+    vol.last_tracked_generation = top_generation
     sess.commit()
 
 
-def dedup(sess, fs, volume_fd, results_file):
+def dedup(sess, vol, volume_fd, results_file):
     space_gain1 = space_gain2 = 0
 
     for comm1 in sess.query(
         Commonality1
     ).filter_by(
-        fs_id=fs.id,
+        vol_id=vol.id,
     ):
         space_gain1 += comm1.size * (len(comm1.inodes) - 1)
         results_file.write(
@@ -178,7 +180,7 @@ def dedup(sess, fs, volume_fd, results_file):
     for comm2 in sess.query(
         Commonality2
     ).filter_by(
-        fs_id=fs.id,
+        vol_id=vol.id,
     ):
         space_gain2 += comm2.size * (len(comm2.inodes) - 1)
         results_file.write(
@@ -252,7 +254,7 @@ def dedup(sess, fs, volume_fd, results_file):
 
     sess.execute(
         Inode.__table__.update().where(
-            Inode.fs == fs
+            Inode.vol == vol
         ).values(
             has_updates=False))
     sess.commit()
@@ -285,14 +287,14 @@ def vol_cmd(args, scan_only):
     sess = Session()
     META.create_all(engine)
     volume_fd = os.open(args.volume, os.O_DIRECTORY)
-    fs = get_fs(sess, volume_fd)
+    vol = get_vol(sess, volume_fd)
 
     set_idle_priority()
     # May raise IOError, let Python print it
-    track_updated_files(sess, fs, volume_fd, sys.stdout)
+    track_updated_files(sess, vol, volume_fd, sys.stdout)
 
     if not scan_only:
-        dedup(sess, fs, volume_fd, sys.stdout)
+        dedup(sess, vol, volume_fd, sys.stdout)
 
 
 def vol_flags(parser):

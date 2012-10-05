@@ -37,25 +37,33 @@ class SuperBase(object):
 Base = declarative_base(cls=SuperBase)
 
 
-# XXX Actually a subvolume
 class Filesystem(Base):
+    id = Column(Integer, primary_key=True)
+    uuid = Column(
+        Text, CheckConstraint("uuid != ''"),
+        unique=True, index=True, nullable=False)
+    __table_args__ = (
+        dict(
+            sqlite_autoincrement=True))
+
+
+class Volume(Base):
     # SmallInteger might be preferrable here,
     # but would require reimplementing an autoincrement
     # sequence outside of sqlite
     id = Column(Integer, primary_key=True)
+    fs_id, fs = FK(Filesystem.id)
     __table_args__ = (
         UniqueConstraint(
-            'uuid', 'root_id'),
+            'fs_id', 'root_id'),
         dict(
             sqlite_autoincrement=True))
-    uuid = Column(
-        Text, CheckConstraint("uuid != ''"), nullable=False)
     root_id = Column(Integer, nullable=False)
     last_tracked_generation = Column(Integer, nullable=False)
 
 
 class Inode(Base):
-    fs_id, fs = FK(Filesystem.id, primary_key=True)
+    vol_id, vol = FK(Volume.id, primary_key=True)
     inode = Column(Integer, primary_key=True)
     # We learn the size at the same time as inode number,
     # and it's the first criterion we'll use, so not nullable
@@ -63,7 +71,7 @@ class Inode(Base):
     mini_hash = Column(Integer, index=True, nullable=True)
 
     # has_updates gets set whenever this inode
-    # appears in the fs scan, and reset whenever we do
+    # appears in the volume scan, and reset whenever we do
     # a dedup pass.
     has_updates = Column(Boolean, index=True, nullable=False)
 
@@ -76,17 +84,17 @@ class Inode(Base):
         self.mini_hash = adler32(rfile.read(4096)) & 0xffffffff
 
     def __repr__(self):
-        return 'Inode(inode=%d, fs=%d)' % (self.inode, self.fs_id)
+        return 'Inode(inode=%d, volume=%d)' % (self.inode, self.vol_id)
 
 
 class Commonality1(Base):
     __table__ = select([
-        Inode.fs_id,
+        Inode.vol_id,
         Inode.size,
         func.count().label('inode_count'),
         func.max(Inode.has_updates).label('has_updates'),
     ]).group_by(
-        Inode.fs_id,
+        Inode.vol_id,
         Inode.size,
     ).having(and_(
         literal_column('inode_count') > 1,
@@ -95,30 +103,30 @@ class Commonality1(Base):
 
     __mapper_args__ = (
         dict(primary_key=[
-            __table__.c.fs_id,
+            __table__.c.vol_id,
             __table__.c.size,
         ]))
 
-    fs_id = Inode.fs_id
+    vol_id = Inode.vol_id
     size = Inode.size
 
     inodes = relationship(
         Inode,
         primaryjoin=and_(
-            __table__.c.fs_id == Inode.fs_id,
+            __table__.c.vol_id == Inode.vol_id,
             __table__.c.size == Inode.size),
         foreign_keys=list(Inode.__table__.c))
 
 
 class Commonality2(Base):
     __table__ = select([
-        Inode.fs_id,
+        Inode.vol_id,
         Inode.size,
         Inode.mini_hash,
         func.count().label('inode_count'),
         func.max(Inode.has_updates).label('has_updates'),
     ]).group_by(
-        Inode.fs_id,
+        Inode.vol_id,
         Inode.size,
         Inode.mini_hash,
     ).having(and_(
@@ -129,19 +137,19 @@ class Commonality2(Base):
 
     __mapper_args__ = (
         dict(primary_key=[
-            __table__.c.fs_id,
+            __table__.c.vol_id,
             __table__.c.size,
             __table__.c.mini_hash,
         ]))
 
-    fs_id = Inode.fs_id
+    vol_id = Inode.vol_id
     size = Inode.size
     mini_hash = Inode.mini_hash
 
     inodes = relationship(
         Inode,
         primaryjoin=and_(
-            __table__.c.fs_id == Inode.fs_id,
+            __table__.c.vol_id == Inode.vol_id,
             __table__.c.size == Inode.size,
             __table__.c.mini_hash == Inode.mini_hash),
         foreign_keys=list(Inode.__table__.c))
