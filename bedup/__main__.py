@@ -303,7 +303,7 @@ def vol_flags(parser):
 
 
 def main():
-    parser = argparse.ArgumentParser()
+    parser = argparse.ArgumentParser(prog='python -m bedup')
     commands = parser.add_subparsers()
 
     sp_scan_vol = commands.add_parser('scan-vol')
