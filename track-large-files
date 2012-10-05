@@ -252,7 +252,7 @@ def dedup(sess, fs, volume_fd, results_file):
         'Potential space gain: pass 1 %d, pass 2 %d\n' % (
             space_gain1, space_gain2))
 
-    sess.execute(Inode.__table__.update().values(has_updates=False))
+    sess.execute(Inode.__table__.update().where(Inode.fs==fs).values(has_updates=False))
     sess.commit()
 
 

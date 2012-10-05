@@ -82,7 +82,7 @@ class Commonality1(Base):
         Inode.fs_id,
         Inode.size,
         func.count().label('inode_count'),
-        func.max('has_updates').label('has_updates'),
+        func.max(Inode.has_updates).label('has_updates'),
     ]).group_by(
         Inode.size,
     ).having(and_(
@@ -107,7 +107,7 @@ class Commonality2(Base):
         Inode.size,
         Inode.mini_hash,
         func.count().label('inode_count'),
-        func.max('has_updates').label('has_updates'),
+        func.max(Inode.has_updates).label('has_updates'),
     ]).group_by(
         Inode.size,
         Inode.mini_hash,
