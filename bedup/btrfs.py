@@ -309,21 +309,31 @@ def ioctl_pybug(fd, ioc, buf):
     return fcntl.ioctl(fd, ioc, buf, True)
 
 
-def lookup_ino_paths(volume_fd, ino):
+def lookup_ino_paths(volume_fd, ino, alloc_extra=0):
     # This ioctl requires root
     args = ffi.new('struct btrfs_ioctl_ino_path_args*')
 
     # keep a reference around; args.fspath isn't a reference after the cast
-    fspath = ffi.new('char[4096]')
+    fspath = ffi.new('char[]', 4096 + alloc_extra)
 
     args.fspath = ffi.cast('uint64_t', fspath)
-    args.size = 4096
+    args.size = 4096 + alloc_extra
     args.inum = ino
 
     ioctl_pybug(volume_fd, lib.BTRFS_IOC_INO_PATHS, ffi.buffer(args))
     data_container = ffi.cast('struct btrfs_data_container *', fspath)
-    if data_container.bytes_missing != 0 or data_container.elem_missed != 0:
-        raise NotImplementedError  # TODO realloc fspath above
+    if not (data_container.bytes_missing == data_container.elem_missed == 0):
+        if alloc_extra:
+            # We already added a lot of padding, don't get caught in a loop.
+            assert False
+        else:
+            # The +1024 is some extra padding so we don't have to realloc twice
+            # if someone is creating hardlinks while we run.
+            # Want: yield from
+            for el in lookup_ino_paths(
+                volume_fd, ino, data_container.bytes_missing + 1024):
+                yield el
+            return
 
     base = ffi.cast('char*', data_container.val)
     offsets = ffi.cast('uint64_t*', data_container.val)
