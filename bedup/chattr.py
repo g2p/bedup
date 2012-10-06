@@ -45,7 +45,7 @@ ffi.cdef('''
 # apt:linux-libc-dev
 lib = ffi.verify('''
     #include <linux/fs.h>
-    ''')
+    ''', ext_package='bedup')
 
 FS_IMMUTABLE_FL = lib.FS_IMMUTABLE_FL
 

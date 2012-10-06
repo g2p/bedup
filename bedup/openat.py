@@ -8,7 +8,7 @@ ffi.cdef('''
 ''')
 lib = ffi.verify('''
     #include <fcntl.h>
-    ''')
+    ''', ext_package='bedup')
 
 
 def fopenat(fd, path):

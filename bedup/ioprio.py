@@ -55,7 +55,7 @@ static inline int ioprio_set(int which, int who, int ioprio) {
 static inline int ioprio_get(int which, int who) {
     return syscall(SYS_ioprio_get, which, who);
 }
-''')
+''', ext_package='bedup')
 
 
 def set_idle_priority(pid=None):

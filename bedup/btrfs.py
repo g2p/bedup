@@ -280,6 +280,7 @@ lib = ffi.verify('''
     #include <btrfs-progs/ioctl.h>
     #include <btrfs-progs/ctree.h>
     ''',
+    ext_package='bedup',
     include_dirs=[getcwd()])
 
 

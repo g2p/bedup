@@ -28,6 +28,7 @@ setup(
         bedup.ioprio.ffi.verifier.get_extension(),
         bedup.openat.ffi.verifier.get_extension(),
     ],
+    ext_package='bedup',
     packages=[
         'bedup',
     ],

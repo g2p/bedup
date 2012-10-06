@@ -60,7 +60,7 @@ struct fiemap {
 lib = ffi.verify('''
 #include <linux/fs.h>
 #include <linux/fiemap.h>
-''')
+''', ext_package='bedup')
 
 
 def fiemap(fd):
