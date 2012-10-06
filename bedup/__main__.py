@@ -41,7 +41,7 @@ def vol_cmd(args, scan_only):
     data_dir = xdg.BaseDirectory.save_data_path(APP_NAME)
     url = sqlalchemy.engine.url.URL(
         'sqlite', database=os.path.join(data_dir, 'db.sqlite'))
-    engine = sqlalchemy.engine.create_engine(url, echo=args.show_sql)
+    engine = sqlalchemy.engine.create_engine(url, echo=args.verbose_sql)
     Session = sessionmaker(bind=engine)
     sess = Session()
     META.create_all(engine)
@@ -54,7 +54,7 @@ def vol_cmd(args, scan_only):
     set_idle_priority()
     for vol in volumes:
         # May raise IOError
-        track_updated_files(sess, vol, sys.stdout)
+        track_updated_files(sess, vol, sys.stdout, args.verbose_scan)
         vols_by_fs[vol.fs].append(vol)
 
     if not scan_only:
@@ -65,7 +65,10 @@ def vol_cmd(args, scan_only):
 def vol_flags(parser):
     parser.add_argument('volume', nargs='+', help='btrfs volumes')
     parser.add_argument(
-        '--show-sql', action='store_true', dest='show_sql',
+        '--verbose-scan', action='store_true', dest='verbose_scan',
+        help='print inodes being scanned')
+    parser.add_argument(
+        '--verbose-sql', action='store_true', dest='verbose_sql',
         help='print SQL statements being executed')
 
 

@@ -42,7 +42,7 @@ def get_vol(sess, volume_fd, desc):
     return vol
 
 
-def track_updated_files(sess, vol, results_file):
+def track_updated_files(sess, vol, results_file, verbose_scan):
     from .btrfs import ffi, u64_max
 
     min_generation = vol.last_tracked_generation
@@ -104,19 +104,17 @@ def track_updated_files(sess, vol, results_file):
                     continue
                 ino = sh.objectid
                 inode, created = get_or_create(
-                    sess,
-                    Inode,
-                    vol=vol,
-                    inode=ino)
+                    sess, Inode, vol=vol, inode=ino)
                 inode.size = size
                 inode.has_updates = True
-                names = list(lookup_ino_paths(vol.fd, ino))
-                results_file.write(
-                    'item type %d inode %d len %d'
-                    ' gen0 %d gen1 %d size %d names %r mode %o\n' % (
-                        sh.type, ino, sh.len,
-                        sh.transid, found_gen, size, names,
-                        mode))
+                if verbose_scan:
+                    names = list(lookup_ino_paths(vol.fd, ino))
+                    results_file.write(
+                        'item type %d inode %d len %d'
+                        ' gen0 %d gen1 %d size %d names %r mode %o\n' % (
+                            sh.type, ino, sh.len,
+                            sh.transid, found_gen, size, names,
+                            mode))
         sk.min_objectid = sh.objectid
         sk.min_type = sh.type
         sk.min_offset = sh.offset
