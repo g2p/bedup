@@ -19,7 +19,7 @@ from .dedup import ImmutableFDs, cmp_files, dedup_same
 from .ioprio import set_idle_priority
 from .openat import fopenat, fopenat_rw
 from .tracking_model import (
-    Filesystem, Volume, Inode, Commonality1, Commonality2, get_or_create, META)
+    Filesystem, Volume, Inode, comm_mappings, get_or_create, META)
 
 from sqlalchemy.orm import sessionmaker
 
@@ -138,13 +138,13 @@ def track_updated_files(sess, vol, results_file):
     sess.commit()
 
 
-def dedup(sess, vol, results_file):
+def dedup(sess, volset, results_file):
     space_gain1 = space_gain2 = 0
+    vol_ids = [vol.id for vol in volset]
+    Commonality1, Commonality2 = comm_mappings(vol_ids)
 
     for comm1 in sess.query(
         Commonality1
-    ).filter_by(
-        vol_id=vol.id,
     ):
         space_gain1 += comm1.size * (len(comm1.inodes) - 1)
         results_file.write(
@@ -161,7 +161,7 @@ def dedup(sess, vol, results_file):
             # are updated (as opposed to extent updates)
             # to be able to actually cache the result
             try:
-                paths = list(lookup_ino_paths(vol.fd, inode.inode))
+                paths = list(lookup_ino_paths(inode.vol.fd, inode.inode))
             except IOError as e:
                 if e.errno != errno.ENOENT:
                     raise
@@ -176,13 +176,11 @@ def dedup(sess, vol, results_file):
                 sess.delete(inode)
                 continue
             #results_file.write('paths %r inode %d\n' % (paths, inode.inode))
-            rfile = fopenat(vol.fd, paths[0])
+            rfile = fopenat(inode.vol.fd, paths[0])
             inode.mini_hash_from_file(rfile)
 
     for comm2 in sess.query(
         Commonality2
-    ).filter_by(
-        vol_id=vol.id,
     ):
         space_gain2 += comm2.size * (len(comm2.inodes) - 1)
         results_file.write(
@@ -194,13 +192,13 @@ def dedup(sess, vol, results_file):
         by_hash = collections.defaultdict(list)
 
         for inode in comm2.inodes:
-            paths = list(lookup_ino_paths(vol.fd, inode.inode))
+            paths = list(lookup_ino_paths(inode.vol.fd, inode.inode))
             #results_file.write('inode %d paths %s\n' % (inode.inode, paths))
             # Open everything rw, we don't know which
             # can be a read-only source yet.
             # We may also want to defragment the source.
             try:
-                afile = fopenat_rw(vol.fd, paths[0])
+                afile = fopenat_rw(inode.vol.fd, paths[0])
             except IOError as e:
                 # File contains the image of a running process,
                 # we can't open it in write mode.
@@ -256,7 +254,7 @@ def dedup(sess, vol, results_file):
 
     sess.execute(
         Inode.__table__.update().where(
-            Inode.vol == vol
+            Inode.vol_id.in_(vol_ids)
         ).values(
             has_updates=False))
     sess.commit()
@@ -292,15 +290,17 @@ def vol_cmd(args, scan_only):
     # Only use the path as a description, it is liable to change.
     volumes = [get_vol(sess, os.open(volpath, os.O_DIRECTORY), desc=volpath)
                for volpath in args.volume]
+    vols_by_fs = collections.defaultdict(list)
 
     set_idle_priority()
     for vol in volumes:
         # May raise IOError
         track_updated_files(sess, vol, sys.stdout)
+        vols_by_fs[vol.fs].append(vol)
 
     if not scan_only:
-        for vol in volumes:
-            dedup(sess, vol, sys.stdout)
+        for volset in vols_by_fs.itervalues():
+            dedup(sess, volset, sys.stdout)
 
 
 def vol_flags(parser):

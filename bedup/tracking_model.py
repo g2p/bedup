@@ -1,5 +1,5 @@
 
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import relationship, column_property
 from sqlalchemy.orm.exc import NoResultFound
 from sqlalchemy.sql import and_, select, func, literal_column
 from sqlalchemy.ext.declarative import declarative_base, declared_attr
@@ -52,7 +52,7 @@ class Volume(Base):
     # but would require reimplementing an autoincrement
     # sequence outside of sqlite
     id = Column(Integer, primary_key=True)
-    fs_id, fs = FK(Filesystem.id)
+    fs_id, fs = FK(Filesystem.id, backref='volumes')
     __table_args__ = (
         UniqueConstraint(
             'fs_id', 'root_id'),
@@ -75,6 +75,9 @@ class Inode(Base):
     # a dedup pass.
     has_updates = Column(Boolean, index=True, nullable=False)
 
+    fs_id = column_property(
+        select([Volume.fs_id]).where(Volume.id == vol_id).label('fs_id'))
+
     def mini_hash_from_file(self, rfile):
         # A very cheap, very partial hash for quick disambiguation
         # Won't help with things like zeroed or sparse files.
@@ -87,74 +90,74 @@ class Inode(Base):
         return 'Inode(inode=%d, volume=%d)' % (self.inode, self.vol_id)
 
 
-class Commonality1(Base):
-    __table__ = select([
-        Inode.vol_id,
-        Inode.size,
-        func.count().label('inode_count'),
-        func.max(Inode.has_updates).label('has_updates'),
-    ]).group_by(
-        Inode.vol_id,
-        Inode.size,
-    ).having(and_(
-        literal_column('inode_count') > 1,
-        literal_column('has_updates') > 0,
-    )).alias()
+def comm_mappings(vol_ids):
+    class Commonality1(Base):
+        __table__ = select([
+            Inode.fs_id,
+            Inode.size,
+            func.count().label('inode_count'),
+            func.max(Inode.has_updates).label('has_updates'),
+        ]).where(
+            Inode.vol_id.in_(vol_ids)
+        ).group_by(
+            Inode.fs_id,
+            Inode.size,
+        ).having(and_(
+            literal_column('inode_count') > 1,
+            literal_column('has_updates') > 0,
+        )).alias()
 
-    __mapper_args__ = (
-        dict(primary_key=[
-            __table__.c.vol_id,
-            __table__.c.size,
-        ]))
+        __mapper_args__ = (
+            dict(primary_key=[
+                __table__.c.fs_id,
+                __table__.c.size,
+            ]))
 
-    vol_id = Inode.vol_id
-    size = Inode.size
+        inodes = relationship(
+            Inode,
+            primaryjoin=and_(
+                Inode.fs_id == __table__.c.fs_id,
+                Inode.vol_id.in_(vol_ids),
+                Inode.size == __table__.c.size),
+            foreign_keys=list(Inode.__table__.c))
 
-    inodes = relationship(
-        Inode,
-        primaryjoin=and_(
-            __table__.c.vol_id == Inode.vol_id,
-            __table__.c.size == Inode.size),
-        foreign_keys=list(Inode.__table__.c))
+    class Commonality2(Base):
+        __table__ = select([
+            Inode.fs_id,
+            Inode.size,
+            Inode.mini_hash,
+            func.count().label('inode_count'),
+            func.max(Inode.has_updates).label('has_updates'),
+        ]).where(
+            Inode.vol_id.in_(vol_ids)
+        ).group_by(
+            Inode.fs_id,
+            Inode.size,
+            Inode.mini_hash,
+        ).having(and_(
+            Inode.mini_hash != None,
+            literal_column('inode_count') > 1,
+            literal_column('has_updates') > 0,
+        )).alias()
 
+        __mapper_args__ = (
+            dict(primary_key=[
+                __table__.c.fs_id,
+                __table__.c.size,
+                __table__.c.mini_hash,
+            ]))
 
-class Commonality2(Base):
-    __table__ = select([
-        Inode.vol_id,
-        Inode.size,
-        Inode.mini_hash,
-        func.count().label('inode_count'),
-        func.max(Inode.has_updates).label('has_updates'),
-    ]).group_by(
-        Inode.vol_id,
-        Inode.size,
-        Inode.mini_hash,
-    ).having(and_(
-        Inode.mini_hash != None,
-        literal_column('inode_count') > 1,
-        literal_column('has_updates') > 0,
-    )).alias()
+        inodes = relationship(
+            Inode,
+            primaryjoin=and_(
+                Inode.fs_id == __table__.c.fs_id,
+                Inode.vol_id.in_(vol_ids),
+                Inode.size == __table__.c.size,
+                Inode.mini_hash == __table__.c.mini_hash),
+            foreign_keys=list(Inode.__table__.c))
 
-    __mapper_args__ = (
-        dict(primary_key=[
-            __table__.c.vol_id,
-            __table__.c.size,
-            __table__.c.mini_hash,
-        ]))
-
-    vol_id = Inode.vol_id
-    size = Inode.size
-    mini_hash = Inode.mini_hash
-
-    inodes = relationship(
-        Inode,
-        primaryjoin=and_(
-            __table__.c.vol_id == Inode.vol_id,
-            __table__.c.size == Inode.size,
-            __table__.c.mini_hash == Inode.mini_hash),
-        foreign_keys=list(Inode.__table__.c))
-
-# Commonality3 would be a crypto hash, but it's not part of this model atm
+    # Commonality3 would be a crypto hash, but it's not part of this model atm
+    return Commonality1, Commonality2
 
 META = Base.metadata
 

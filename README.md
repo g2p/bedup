@@ -34,7 +34,9 @@ To deduplicate a mounted btrfs volume:
 
     sudo python -m bedup dedup-vol /mnt/btrfs
 
-bedup will not recurse into subvolumes, call it multiple times if necessary.
+bedup will not recurse into subvolumes, mention multiple subvolumes
+on the command line if you want cross-subvolume deduplication (requires
+Linux 3.6).
 You can get a list of btrfs subvolumes with:
 
     sudo btrfs subvolume list /mnt/btrfs
