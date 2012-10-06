@@ -124,13 +124,13 @@ def track_updated_files(sess, vol, results_file, verbose_scan):
                     continue
                 ino = sh.objectid
                 inode, created = get_or_create(
-                    sess, Inode, vol=vol, inode=ino)
+                    sess, Inode, vol=vol, ino=ino)
                 inode.size = size
                 inode.has_updates = True
                 if verbose_scan:
                     names = list(lookup_ino_paths(vol.fd, ino))
                     results_file.write(
-                        'item type %d inode %d len %d'
+                        'item type %d ino %d len %d'
                         ' gen0 %d gen1 %d size %d names %r mode %o\n' % (
                             sh.type, ino, sh.len,
                             sh.transid, found_gen, size, names,
@@ -170,7 +170,7 @@ def dedup_tracked(sess, volset, results_file):
             # are updated (as opposed to extent updates)
             # to be able to actually cache the result
             try:
-                paths = list(lookup_ino_paths(inode.vol.fd, inode.inode))
+                paths = list(lookup_ino_paths(inode.vol.fd, inode.ino))
             except IOError as e:
                 if e.errno != errno.ENOENT:
                     raise
@@ -184,7 +184,7 @@ def dedup_tracked(sess, volset, results_file):
                 # being replaced by some other kind of inode.
                 sess.delete(inode)
                 continue
-            #results_file.write('paths %r inode %d\n' % (paths, inode.inode))
+            #results_file.write('paths %r ino %d\n' % (paths, inode.ino))
             rfile = fopenat(inode.vol.fd, paths[0])
             inode.mini_hash_from_file(rfile)
 
@@ -197,7 +197,7 @@ def dedup_tracked(sess, volset, results_file):
             % (comm2.size, ))
         for inode in comm2.inodes:
             try:
-                paths = list(lookup_ino_paths(inode.vol.fd, inode.inode))
+                paths = list(lookup_ino_paths(inode.vol.fd, inode.ino))
             except IOError as e:
                 if e.errno != errno.ENOENT:
                     raise
@@ -220,8 +220,8 @@ def dedup_tracked(sess, volset, results_file):
         by_hash = collections.defaultdict(list)
 
         for inode in comm3.inodes:
-            paths = list(lookup_ino_paths(inode.vol.fd, inode.inode))
-            #results_file.write('inode %d paths %s\n' % (inode.inode, paths))
+            paths = list(lookup_ino_paths(inode.vol.fd, inode.ino))
+            #results_file.write('ino %d paths %s\n' % (inode.ino, paths))
             # Open everything rw, we can't pick one for the source side
             # yet because the crypto hash might eliminate it.
             # We may also want to defragment the source.
@@ -259,7 +259,7 @@ def dedup_tracked(sess, volset, results_file):
                 if afile.tell() != comm3.size:
                     continue
                 st = os.fstat(afd)
-                if st.st_ino != fd_inodes[afd].inode:
+                if st.st_ino != fd_inodes[afd].ino:
                     continue
                 if st.st_dev != fd_inodes[afd].vol.st_dev:
                     continue
@@ -300,9 +300,8 @@ def dedup_tracked(sess, volset, results_file):
                     sess.add(evt)
                     for dfile in dfiles_successful:
                         inode = fd_inodes[dfile.fileno()]
-                        ino = inode.inode
-                        vol = inode.vol
-                        evti = DedupEventInode(event=evt, ino=ino, vol=vol)
+                        evti = DedupEventInode(
+                            event=evt, ino=inode.ino, vol=inode.vol)
                         sess.add(evti)
                     sess.commit()
 

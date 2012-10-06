@@ -69,8 +69,9 @@ class Volume(Base):
 
 class Inode(Base):
     vol_id, vol = FK(Volume.id, primary_key=True)
-    inode = Column(Integer, primary_key=True)
-    # We learn the size at the same time as inode number,
+    # inode number
+    ino = Column(Integer, primary_key=True)
+    # We learn the size at the same time as the inode number,
     # and it's the first criterion we'll use, so not nullable
     size = Column(Integer, index=True, nullable=False)
     mini_hash = Column(Integer, index=True, nullable=True)
@@ -98,7 +99,7 @@ class Inode(Base):
         self.fiemap_hash = hash(extents)
 
     def __repr__(self):
-        return 'Inode(inode=%d, volume=%d)' % (self.inode, self.vol_id)
+        return 'Inode(ino=%d, volume=%d)' % (self.ino, self.vol_id)
 
 
 # The logging classes don't have anything in common (no FKs)
