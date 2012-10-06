@@ -1,7 +1,6 @@
 # vim: set fileencoding=utf-8 sw=4 ts=4 et :
 
 import cffi
-import fcntl
 import uuid
 
 from .fiemap import same_extents
@@ -297,6 +296,16 @@ def name_of_dir_item(item):
     return ffi.string(ffi.cast('char*', item + 1), namelen)
 
 
+def ioctl_pybug(fd, ioc, buf):
+    # Private import
+    import fcntl
+
+    # Check for http://bugs.python.org/issue1520818
+    if len(buf) == 1024:
+        raise ValueError
+    return fcntl.ioctl(fd, ioc, buf, True)
+
+
 def lookup_ino_paths(volume_fd, ino):
     # This ioctl requires root
     args = ffi.new('struct btrfs_ioctl_ino_path_args*')
@@ -308,7 +317,7 @@ def lookup_ino_paths(volume_fd, ino):
     args.size = 4096
     args.inum = ino
 
-    fcntl.ioctl(volume_fd, lib.BTRFS_IOC_INO_PATHS, ffi.buffer(args))
+    ioctl_pybug(volume_fd, lib.BTRFS_IOC_INO_PATHS, ffi.buffer(args))
     data_container = ffi.cast('struct btrfs_data_container *', fspath)
     if data_container.bytes_missing != 0 or data_container.elem_missed != 0:
         raise NotImplementedError  # TODO realloc fspath above
@@ -335,7 +344,7 @@ def get_fsid(volume_fd):
         args_buf = ffi.buffer(args_cbuf)
         args = ffi.cast('struct btrfs_ioctl_fs_info_args *', args_cbuf)
     before = tuple(args.fsid)
-    fcntl.ioctl(volume_fd, lib.BTRFS_IOC_FS_INFO, args_buf, True)
+    ioctl_pybug(volume_fd, lib.BTRFS_IOC_FS_INFO, args_buf)
     after = tuple(args.fsid)
     # Check for http://bugs.python.org/issue1520818
     assert after != before, (before, after)
@@ -346,7 +355,7 @@ def get_root_id(volume_fd):
     args = ffi.new('struct btrfs_ioctl_ino_lookup_args *')
     # the inode of the root directory
     args.objectid = lib.BTRFS_FIRST_FREE_OBJECTID
-    fcntl.ioctl(volume_fd, lib.BTRFS_IOC_INO_LOOKUP, ffi.buffer(args))
+    ioctl_pybug(volume_fd, lib.BTRFS_IOC_INO_LOOKUP, ffi.buffer(args))
     return args.treeid
 
 
@@ -371,7 +380,7 @@ def get_root_generation(volume_fd):
     while True:
         sk.nr_items = 4096
 
-        fcntl.ioctl(
+        ioctl_pybug(
             volume_fd, lib.BTRFS_IOC_TREE_SEARCH, args_buffer)
         if sk.nr_items == 0:
             break
@@ -401,14 +410,14 @@ def get_root_generation(volume_fd):
 def clone_data(dest, src, check_first):
     if check_first and same_extents(dest, src):
         return False
-    fcntl.ioctl(dest, lib.BTRFS_IOC_CLONE, src)
+    ioctl_pybug(dest, lib.BTRFS_IOC_CLONE, src)
     return True
 
 
 def defragment(fd):
     # XXX Can remove compression as a side-effect
     # Also, can unshare extents.
-    fcntl.ioctl(fd, lib.BTRFS_IOC_DEFRAG)
+    ioctl_pybug(fd, lib.BTRFS_IOC_DEFRAG)
 
 
 class FindError(Exception):
@@ -435,7 +444,7 @@ def find_new(volume_fd, min_generation, results_file):
         sk.nr_items = 4096
 
         try:
-            fcntl.ioctl(
+            ioctl_pybug(
                 volume_fd, lib.BTRFS_IOC_TREE_SEARCH, args_buffer)
         except IOError as e:
             raise FindError(e)
