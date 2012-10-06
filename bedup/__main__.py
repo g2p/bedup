@@ -139,9 +139,9 @@ def track_updated_files(sess, vol, results_file):
 
 
 def dedup(sess, volset, results_file):
-    space_gain1 = space_gain2 = 0
+    space_gain1 = space_gain2 = space_gain3 = 0
     vol_ids = [vol.id for vol in volset]
-    Commonality1, Commonality2 = comm_mappings(vol_ids)
+    Commonality1, Commonality2, Commonality3 = comm_mappings(vol_ids)
 
     for comm1 in sess.query(
         Commonality1
@@ -184,18 +184,36 @@ def dedup(sess, volset, results_file):
     ):
         space_gain2 += comm2.size * (len(comm2.inodes) - 1)
         results_file.write(
+            'dupe candidates for size %d\n'
+            % (comm2.size, ))
+        for inode in comm2.inodes:
+            try:
+                paths = list(lookup_ino_paths(inode.vol.fd, inode.inode))
+            except IOError as e:
+                if e.errno != errno.ENOENT:
+                    raise
+                sess.delete(inode)
+                continue
+            rfile = fopenat(inode.vol.fd, paths[0])
+            inode.fiemap_hash_from_file(rfile)
+
+    for comm3 in sess.query(
+        Commonality3
+    ):
+        space_gain3 += comm3.size * (len(comm3.inodes) - 1)
+        results_file.write(
             'dupe candidates for size %d and mini_hash %#x\n'
-            % (comm2.size, comm2.mini_hash))
+            % (comm3.size, comm3.mini_hash))
         files = []
         fds = []
         fd_names = {}
         by_hash = collections.defaultdict(list)
 
-        for inode in comm2.inodes:
+        for inode in comm3.inodes:
             paths = list(lookup_ino_paths(inode.vol.fd, inode.inode))
             #results_file.write('inode %d paths %s\n' % (inode.inode, paths))
-            # Open everything rw, we don't know which
-            # can be a read-only source yet.
+            # Open everything rw, we can't pick one for the source side
+            # yet because the crypto hash might eliminate it.
             # We may also want to defragment the source.
             try:
                 afile = fopenat_rw(inode.vol.fd, paths[0])
@@ -249,8 +267,8 @@ def dedup(sess, volset, results_file):
                                 sname, dname))
 
     results_file.write(
-        'Potential space gain: pass 1 %d, pass 2 %d\n' % (
-            space_gain1, space_gain2))
+        'Potential space gain: pass 1 %d, pass 2 %d pass 3 %d\n' % (
+            space_gain1, space_gain2, space_gain3))
 
     sess.execute(
         Inode.__table__.update().where(

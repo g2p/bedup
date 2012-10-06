@@ -1,12 +1,14 @@
 
 from sqlalchemy.orm import relationship, column_property
 from sqlalchemy.orm.exc import NoResultFound
-from sqlalchemy.sql import and_, select, func, literal_column
+from sqlalchemy.sql import and_, select, func, literal_column, distinct
 from sqlalchemy.ext.declarative import declarative_base, declared_attr
 from sqlalchemy.types import (Boolean, Integer, Text)
 from sqlalchemy.schema import (
     Column, ForeignKey, UniqueConstraint, CheckConstraint)
+
 from zlib import adler32
+from . import fiemap
 
 
 def FK(cattr, primary_key=False, backref=None, nullable=False):
@@ -69,6 +71,8 @@ class Inode(Base):
     # and it's the first criterion we'll use, so not nullable
     size = Column(Integer, index=True, nullable=False)
     mini_hash = Column(Integer, index=True, nullable=True)
+    # A digest of that file's FIEMAP extent info.
+    fiemap_hash = Column(Integer, index=True, nullable=True)
 
     # has_updates gets set whenever this inode
     # appears in the volume scan, and reset whenever we do
@@ -85,6 +89,10 @@ class Inode(Base):
         rfile.seek(int(self.size * .3))
         # bitops to make unsigned, for better readability
         self.mini_hash = adler32(rfile.read(4096)) & 0xffffffff
+
+    def fiemap_hash_from_file(self, rfile):
+        extents = tuple(fiemap.fiemap(rfile.fileno()))
+        self.fiemap_hash = hash(extents)
 
     def __repr__(self):
         return 'Inode(inode=%d, volume=%d)' % (self.inode, self.vol_id)
@@ -128,14 +136,14 @@ def comm_mappings(vol_ids):
             Inode.mini_hash,
             func.count().label('inode_count'),
             func.max(Inode.has_updates).label('has_updates'),
-        ]).where(
-            Inode.vol_id.in_(vol_ids)
-        ).group_by(
+        ]).where(and_(
+            Inode.mini_hash != None,
+            Inode.vol_id.in_(vol_ids),
+        )).group_by(
             Inode.fs_id,
             Inode.size,
             Inode.mini_hash,
         ).having(and_(
-            Inode.mini_hash != None,
             literal_column('inode_count') > 1,
             literal_column('has_updates') > 0,
         )).alias()
@@ -156,8 +164,44 @@ def comm_mappings(vol_ids):
                 Inode.mini_hash == __table__.c.mini_hash),
             foreign_keys=list(Inode.__table__.c))
 
-    # Commonality3 would be a crypto hash, but it's not part of this model atm
-    return Commonality1, Commonality2
+    class Commonality3(Base):
+        __table__ = select([
+            Inode.fs_id,
+            Inode.size,
+            Inode.mini_hash,
+            func.count(distinct(Inode.fiemap_hash)).label('fiemap_count'),
+            func.max(Inode.has_updates).label('has_updates'),
+        ]).where(and_(
+            Inode.mini_hash != None,
+            Inode.fiemap_hash != None,
+            Inode.vol_id.in_(vol_ids),
+        )).group_by(
+            Inode.fs_id,
+            Inode.size,
+            Inode.mini_hash,
+        ).having(and_(
+            literal_column('fiemap_count') > 1,
+            literal_column('has_updates') > 0,
+        )).alias()
+
+        __mapper_args__ = (
+            dict(primary_key=[
+                __table__.c.fs_id,
+                __table__.c.size,
+                __table__.c.mini_hash,
+            ]))
+
+        inodes = relationship(
+            Inode,
+            primaryjoin=and_(
+                Inode.fs_id == __table__.c.fs_id,
+                Inode.vol_id.in_(vol_ids),
+                Inode.size == __table__.c.size,
+                Inode.mini_hash == __table__.c.mini_hash),
+            foreign_keys=list(Inode.__table__.c))
+
+    # Commonality4 would be a crypto hash, but it's not part of this model atm
+    return Commonality1, Commonality2, Commonality3
 
 META = Base.metadata
 

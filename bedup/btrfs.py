@@ -408,9 +408,10 @@ def get_root_generation(volume_fd):
 
 # clone_data and defragment also have _RANGE variants
 def clone_data(dest, src, check_first):
+    from fcntl import ioctl
     if check_first and same_extents(dest, src):
         return False
-    ioctl_pybug(dest, lib.BTRFS_IOC_CLONE, src)
+    ioctl(dest, lib.BTRFS_IOC_CLONE, src)
     return True
 
 

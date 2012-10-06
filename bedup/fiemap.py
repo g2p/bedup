@@ -1,4 +1,5 @@
 from cffi import FFI
+from collections import namedtuple
 import fcntl
 
 ffi = FFI()
@@ -63,6 +64,9 @@ lib = ffi.verify('''
 ''', ext_package='bedup')
 
 
+FiemapExtent = namedtuple('FiemapExtent', 'logical physical length flags')
+
+
 def fiemap(fd):
     """
     Gets a map of file extents.
@@ -85,12 +89,12 @@ def fiemap(fd):
             break
         for i in xrange(fiemap_ptr.fm_mapped_extents):
             extent = fiemap_ptr.fm_extents[i]
-            yield extent
+            yield FiemapExtent(
+                extent.fe_logical, extent.fe_physical,
+                extent.fe_length, extent.fe_flags)
         fiemap_ptr.fm_start = extent.fe_logical + extent.fe_length
 
 
 def same_extents(fd1, fd2):
-    # Somehow CFFI does the right magic and this works.
-    # Building namedtuples from the CData might be more foolproof nonetheless.
-    return list(fiemap(fd1)) == list(fiemap(fd2))
+    return tuple(fiemap(fd1)) == tuple(fiemap(fd2))
 
