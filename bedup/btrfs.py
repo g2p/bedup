@@ -332,6 +332,9 @@ def lookup_ino_paths(volume_fd, ino, alloc_extra=0):
         sys.stderr.write(
             'Problem inode %d %d %d\n' % (
                 ino, data_container.bytes_missing, data_container.elem_missed))
+        # just say no
+        raise IOError('Problem on inode %d' % ino)
+
         if alloc_extra:
             # We already added a lot of padding, don't get caught in a loop.
             raise IOError('Problem on inode %d' % ino)
