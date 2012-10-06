@@ -46,9 +46,7 @@ def vol_cmd(args, scan_only):
     sess = Session()
     META.create_all(engine)
 
-    # Only use the path as a description, it is liable to change.
-    volumes = [get_vol(sess, os.open(volpath, os.O_DIRECTORY), desc=volpath)
-               for volpath in args.volume]
+    volumes = set(get_vol(sess, volpath) for volpath in args.volume)
     vols_by_fs = collections.defaultdict(list)
 
     set_idle_priority()

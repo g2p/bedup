@@ -3,6 +3,7 @@ import collections
 import errno
 import fcntl
 import hashlib
+import os
 import stat
 
 from .btrfs import (
@@ -26,7 +27,8 @@ SIZE_CUTOFF = 16 * 1024 ** 2
 SIZE_CUTOFF = 8 * 1024 ** 2
 
 
-def get_vol(sess, volume_fd, desc):
+def get_vol(sess, volpath):
+    volume_fd = os.open(volpath, os.O_DIRECTORY)
     fs, fs_created = get_or_create(
         sess, Filesystem,
         uuid=str(get_fsid(volume_fd)))
@@ -35,10 +37,15 @@ def get_vol(sess, volume_fd, desc):
         fs=fs, root_id=get_root_id(volume_fd))
     if vol_created:
         vol.last_tracked_generation = 0
-    # Catch the uuid bug early with a check constraint
-    sess.commit()
-    vol.fd = volume_fd
-    vol.desc = desc
+
+    # If a volume was given multiple times on the command line,
+    # keep the first name and fd for it.
+    if hasattr(vol, 'fd'):
+        os.close(volume_fd)
+    else:
+        vol.fd = volume_fd
+        # Only use the path as a description, it is liable to change.
+        vol.desc = volpath
     return vol
 
 
