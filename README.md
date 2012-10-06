@@ -3,21 +3,36 @@ Deduplication for Btrfs.
 
 # Requirements
 
-You need Python 2.7, Python 2.6, or PyPy.
+You need Python 2.7 (recommended), Python 2.6, or PyPy.
 Python 3 isn't currently supported due to CFFI incompatibilities.
 You need Linux 3.3 or newer.
 
-Install CFFI 0.4. It isn't released yet; this will install it from bitbucket:
+This should get you started on Debian/Ubuntu:
 
-    pip install https://bitbucket.org/cffi/cffi/get/tip.tar.gz
+    sudo aptitude install python-pip build-essentials git
+
+# Installation
+
+Install CFFI 0.4. It isn't released yet; this will install
+a development snapshot from bitbucket:
+
+    pip install --user https://bitbucket.org/cffi/cffi/get/tip.tar.gz
+
+## Option 1 (recommended): from a git clone
 
 Get btrfs-progs (we need the headers at a known location):
 
     git submodule update --init
 
-There are a few other Python dependencies:
+Complete the installation.
+This will compile some code with CFFI and pull the rest
+of our Python dependencies:
 
-    pip install -e .
+    pip install --user -e .
+
+## Option 2: from a PyPI release
+
+    pip install --user bedup
 
 # Running
 
