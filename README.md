@@ -3,8 +3,8 @@ Deduplication for Btrfs.
 
 # Requirements
 
-You need Python 2.7 or PyPy. Other versions of Python aren't
-supported due to CFFI incompatibilities.
+You need Python 2.7, Python 2.6, or PyPy.
+Python 3 isn't currently supported due to CFFI incompatibilities.
 You need Linux 3.3 or newer.
 
 Install CFFI 0.4. It isn't released yet; this will install it from bitbucket:
