@@ -1,2 +1,3 @@
 /.tox/
 *.py[oc]
+/MANIFEST

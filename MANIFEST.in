@@ -1,0 +1,11 @@
+# We only include the first two directly,
+# but ctree.h pulls in a lot more stuff.
+include btrfs-progs/ioctl.h
+include btrfs-progs/ctree.h
+include btrfs-progs/list.h
+include btrfs-progs/kerncompat.h
+include btrfs-progs/radix-tree.h
+include btrfs-progs/extent-cache.h
+include btrfs-progs/rbtree.h
+include btrfs-progs/extent_io.h
+
