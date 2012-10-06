@@ -302,6 +302,8 @@ def ioctl_pybug(fd, ioc, buf):
 
     # Check for http://bugs.python.org/issue1520818
     # Also known as http://bugs.python.org/issue9758
+    # Fixed in 2.7.1, 3.1.3, and 3.2, not backported to 2.6
+    # which is now in maintenance mode.
     if len(buf) == 1024:
         raise ValueError
     return fcntl.ioctl(fd, ioc, buf, True)
