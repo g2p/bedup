@@ -128,7 +128,12 @@ def track_updated_files(sess, vol, results_file, verbose_scan):
                 inode.size = size
                 inode.has_updates = True
                 if verbose_scan:
-                    names = list(lookup_ino_paths(vol.fd, ino))
+                    try:
+                        names = list(lookup_ino_paths(vol.fd, ino))
+                    except IOError as e:
+                        results_file.write('Error at path lookup: %r\n' % e)
+                        sess.remove(inode)
+                        continue
                     results_file.write(
                         'item type %d ino %d len %d'
                         ' gen0 %d gen1 %d size %d names %r mode %o\n' % (

@@ -313,19 +313,28 @@ def lookup_ino_paths(volume_fd, ino, alloc_extra=0):
     # This ioctl requires root
     args = ffi.new('struct btrfs_ioctl_ino_path_args*')
 
+    assert alloc_extra >= 0
+    # XXX We're getting some funky overflows here
+    # inode-resolve -v 541144
+    alloc_size = 4096 + alloc_extra
+
     # keep a reference around; args.fspath isn't a reference after the cast
-    fspath = ffi.new('char[]', 4096 + alloc_extra)
+    fspath = ffi.new('char[]', alloc_size)
 
     args.fspath = ffi.cast('uint64_t', fspath)
-    args.size = 4096 + alloc_extra
+    args.size = alloc_size
     args.inum = ino
 
     ioctl_pybug(volume_fd, lib.BTRFS_IOC_INO_PATHS, ffi.buffer(args))
     data_container = ffi.cast('struct btrfs_data_container *', fspath)
     if not (data_container.bytes_missing == data_container.elem_missed == 0):
+        import sys
+        sys.stderr.write(
+            'Problem inode %d %d %d\n' % (
+                ino, data_container.bytes_missing, data_container.elem_missed))
         if alloc_extra:
             # We already added a lot of padding, don't get caught in a loop.
-            assert False
+            raise IOError('Problem on inode %d' % ino)
         else:
             # The +1024 is some extra padding so we don't have to realloc twice
             # if someone is creating hardlinks while we run.
