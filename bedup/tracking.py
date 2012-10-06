@@ -12,7 +12,8 @@ from .btrfs import (
 from .dedup import ImmutableFDs, cmp_files
 from .openat import fopenat, fopenat_rw
 from .model import (
-    Filesystem, Volume, Inode, comm_mappings, get_or_create)
+    Filesystem, Volume, Inode, comm_mappings, get_or_create,
+    DedupEvent, DedupEventInode)
 
 
 BUFSIZE = 8192
@@ -46,6 +47,7 @@ def get_vol(sess, volpath, size_cutoff):
         os.close(volume_fd)
     else:
         vol.fd = volume_fd
+        vol.st_dev = os.fstat(volume_fd).st_dev
         # Only use the path as a description, it is liable to change.
         vol.desc = volpath
     return vol
@@ -146,6 +148,8 @@ def track_updated_files(sess, vol, results_file, verbose_scan):
 def dedup_tracked(sess, volset, results_file):
     space_gain1 = space_gain2 = space_gain3 = 0
     vol_ids = [vol.id for vol in volset]
+    fs = vol.fs
+    assert all(vol.fs == fs for vol in volset)
     Commonality1, Commonality2, Commonality3 = comm_mappings(vol_ids)
 
     for comm1 in sess.query(
@@ -212,6 +216,7 @@ def dedup_tracked(sess, volset, results_file):
         files = []
         fds = []
         fd_names = {}
+        fd_inodes = {}
         by_hash = collections.defaultdict(list)
 
         for inode in comm3.inodes:
@@ -228,6 +233,11 @@ def dedup_tracked(sess, volset, results_file):
                 if e.errno == errno.ETXTBSY:
                     continue
                 raise
+
+            # It's not completely guaranteed we have the right inode,
+            # there may still be race conditions at this point.
+            # Gets re-checked below (tell and fstat).
+            fd_inodes[afile.fileno()] = inode
             fd_names[afile.fileno()] = paths[0]
             files.append(afile)
             fds.append(afile.fileno())
@@ -242,7 +252,20 @@ def dedup_tracked(sess, volset, results_file):
                 hasher = hashlib.sha1()
                 for buf in iter(lambda: afile.read(BUFSIZE), ''):
                     hasher.update(buf)
+
+                # Mostly for the sake of correct logging, might also
+                # prevent some form of security exploitation.
+                # The file will pop up in the next scan anyway.
+                if afile.tell() != comm3.size:
+                    continue
+                st = os.fstat(afd)
+                if st.st_ino != fd_inodes[afd].inode:
+                    continue
+                if st.st_dev != fd_inodes[afd].vol.st_dev:
+                    continue
+
                 by_hash[hasher.digest()].append(afile)
+
             for fileset in by_hash.itervalues():
                 if len(fileset) < 2:
                     continue
@@ -253,6 +276,7 @@ def dedup_tracked(sess, volset, results_file):
                 if False:
                     defragment(sfd)
                 dfiles = fileset[1:]
+                dfiles_successful = []
                 for dfile in dfiles:
                     dfd = dfile.fileno()
                     sname = fd_names[sfd]
@@ -266,10 +290,21 @@ def dedup_tracked(sess, volset, results_file):
                     if clone_data(dest=dfd, src=sfd, check_first=True):
                         results_file.write(
                             'Did dedup: %r %r\n' % (sname, dname))
+                        dfiles_successful.append(dfile)
                     else:
                         results_file.write(
                             'Did not dedup (same extents): %r %r\n' % (
                                 sname, dname))
+                if dfiles_successful:
+                    evt = DedupEvent(fs=fs, item_size=comm3.size)
+                    sess.add(evt)
+                    for dfile in dfiles_successful:
+                        inode = fd_inodes[dfile.fileno()]
+                        ino = inode.inode
+                        vol = inode.vol
+                        evti = DedupEventInode(event=evt, ino=ino, vol=vol)
+                        sess.add(evti)
+                    sess.commit()
 
     results_file.write(
         'Potential space gain: pass 1 %d, pass 2 %d pass 3 %d\n' % (

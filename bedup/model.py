@@ -3,6 +3,7 @@ from sqlalchemy.orm import relationship, column_property
 from sqlalchemy.orm.exc import NoResultFound
 from sqlalchemy.sql import and_, select, func, literal_column, distinct
 from sqlalchemy.ext.declarative import declarative_base, declared_attr
+from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.types import (Boolean, Integer, Text)
 from sqlalchemy.schema import (
     Column, ForeignKey, UniqueConstraint, CheckConstraint)
@@ -98,6 +99,42 @@ class Inode(Base):
 
     def __repr__(self):
         return 'Inode(inode=%d, volume=%d)' % (self.inode, self.vol_id)
+
+
+# The logging classes don't have anything in common (no FKs)
+# with the tracking classes. For example, inode numbers may
+# be reused, and inodes can be removed from tracking in these
+# cases. That would cause dangling references or delete cascades.
+# We do allow FKs to volumes; those aren't meant to be removed.
+class DedupEvent(Base):
+    id = Column(Integer, primary_key=True)
+    fs_id, fs = FK(Filesystem.id)
+
+    item_size = Column(Integer, index=True, nullable=False)
+
+    @hybrid_property
+    def estimated_space_gain(self):
+        return self.item_size * (self.inode_count - 1)
+
+    __table_args__ = (
+        dict(
+            sqlite_autoincrement=True))
+
+
+class DedupEventInode(Base):
+    id = Column(Integer, primary_key=True)
+    event_id, event = FK(DedupEvent.id)
+    ino = Column(Integer, index=True, nullable=False)
+    vol_id, vol = FK(Volume.id)
+
+    __table_args__ = (
+        dict(
+            sqlite_autoincrement=True))
+
+DedupEvent.inode_count = column_property(
+    select([func.count(DedupEventInode)])
+    .where(DedupEventInode.vol_id == Volume.id)
+    .label('inode_count'))
 
 
 def comm_mappings(vol_ids):
