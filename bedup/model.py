@@ -61,7 +61,9 @@ class Volume(Base):
         dict(
             sqlite_autoincrement=True))
     root_id = Column(Integer, nullable=False)
-    last_tracked_generation = Column(Integer, nullable=False)
+    last_tracked_generation = Column(Integer, nullable=False, default=0)
+    last_tracked_size_cutoff = Column(Integer, nullable=True)
+    size_cutoff = Column(Integer, nullable=False)
 
 
 class Inode(Base):

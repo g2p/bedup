@@ -46,7 +46,8 @@ def vol_cmd(args, scan_only):
     sess = Session()
     META.create_all(engine)
 
-    volumes = set(get_vol(sess, volpath) for volpath in args.volume)
+    volumes = set(
+        get_vol(sess, volpath, args.size_cutoff) for volpath in args.volume)
     vols_by_fs = collections.defaultdict(list)
 
     set_idle_priority()
@@ -68,6 +69,11 @@ def vol_flags(parser):
     parser.add_argument(
         '--verbose-sql', action='store_true', dest='verbose_sql',
         help='print SQL statements being executed')
+    parser.add_argument(
+        '--size-cutoff', type=int, dest='size_cutoff',
+        help='Change the minimum size (in bytes) of tracked files '
+        'for the listed volumes. '
+        'Lowering the cutoff will trigger a partial rescan of older files.')
 
 
 def main():

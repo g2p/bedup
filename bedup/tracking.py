@@ -19,15 +19,15 @@ BUFSIZE = 8192
 
 # 32MiB, initial scan takes about 12', might gain 15837689948,
 # sqlite takes 256k
-SIZE_CUTOFF = 32 * 1024 ** 2
+DEFAULT_SIZE_CUTOFF = 32 * 1024 ** 2
 # about 12' again, might gain 25807974687
-SIZE_CUTOFF = 16 * 1024 ** 2
+DEFAULT_SIZE_CUTOFF = 16 * 1024 ** 2
 # 13'40" (36' with a backup job running in parallel), might gain 26929240347,
 # sqlite takes 758k
-SIZE_CUTOFF = 8 * 1024 ** 2
+DEFAULT_SIZE_CUTOFF = 8 * 1024 ** 2
 
 
-def get_vol(sess, volpath):
+def get_vol(sess, volpath, size_cutoff):
     volume_fd = os.open(volpath, os.O_DIRECTORY)
     fs, fs_created = get_or_create(
         sess, Filesystem,
@@ -35,8 +35,10 @@ def get_vol(sess, volpath):
     vol, vol_created = get_or_create(
         sess, Volume,
         fs=fs, root_id=get_root_id(volume_fd))
-    if vol_created:
-        vol.last_tracked_generation = 0
+    if size_cutoff is not None:
+        vol.size_cutoff = size_cutoff
+    elif vol_created:
+        vol.size_cutoff = DEFAULT_SIZE_CUTOFF
 
     # If a volume was given multiple times on the command line,
     # keep the first name and fd for it.
@@ -52,10 +54,15 @@ def get_vol(sess, volpath):
 def track_updated_files(sess, vol, results_file, verbose_scan):
     from .btrfs import ffi, u64_max
 
-    min_generation = vol.last_tracked_generation
     top_generation = get_root_generation(vol.fd)
+    if (vol.last_tracked_size_cutoff is not None
+        and vol.last_tracked_size_cutoff <= vol.size_cutoff):
+        min_generation = vol.last_tracked_generation
+    else:
+        min_generation = 0
     results_file.write(
-        'generations %d %d\n' % (min_generation, top_generation))
+        'Scanning generations from %d to %d, with size cutoff %d\n'
+        % (min_generation, top_generation, vol.size_cutoff))
 
     args = ffi.new('struct btrfs_ioctl_search_args *')
     args_buffer = ffi.buffer(args)
@@ -103,10 +110,14 @@ def track_updated_files(sess, vol, results_file, verbose_scan):
                 found_gen = lib.btrfs_stack_inode_generation(item)
                 size = lib.btrfs_stack_inode_size(item)
                 mode = lib.btrfs_stack_inode_mode(item)
-                if size < SIZE_CUTOFF:
+                if size < vol.size_cutoff:
                     continue
-                if found_gen < min_generation:
-                    continue
+                if size >= vol.last_tracked_size_cutoff:
+                    if found_gen <= vol.last_tracked_generation:
+                        continue
+                else:
+                    if found_gen <= min_generation:
+                        continue
                 if not stat.S_ISREG(mode):
                     continue
                 ino = sh.objectid
@@ -128,6 +139,7 @@ def track_updated_files(sess, vol, results_file, verbose_scan):
 
         sk.min_offset += 1
     vol.last_tracked_generation = top_generation
+    vol.last_tracked_size_cutoff = vol.size_cutoff
     sess.commit()
 
 
