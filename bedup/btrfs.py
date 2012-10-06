@@ -323,14 +323,22 @@ def lookup_ino_paths(volume_fd, ino):
 
 
 def get_fsid(volume_fd):
-    args = ffi.new('struct btrfs_ioctl_fs_info_args *')
+    if False:
+        args = ffi.new('struct btrfs_ioctl_fs_info_args *')
+        args_buf = ffi.buffer(args)
+    else:
+        # Work around http://bugs.python.org/issue1520818
+        # by making sure the buffer size isn't 1024
+        args_cbuf = ffi.new(
+            'char[]',
+            max(ffi.sizeof('struct btrfs_ioctl_fs_info_args *'), 1025))
+        args_buf = ffi.buffer(args_cbuf)
+        args = ffi.cast('struct btrfs_ioctl_fs_info_args *', args_cbuf)
     before = tuple(args.fsid)
-    assert before == (0,) * 16
-    fcntl.ioctl(volume_fd, lib.BTRFS_IOC_FS_INFO, ffi.buffer(args))
+    fcntl.ioctl(volume_fd, lib.BTRFS_IOC_FS_INFO, args_buf, True)
     after = tuple(args.fsid)
-    # Somehow with Python 2.6 (2.6.7-4ubuntu2) we end up with all zeroes
-    # Probably a bug in CFFI tip.
-    assert after != before == (0,) * 16, (before, after)
+    # Check for http://bugs.python.org/issue1520818
+    assert after != before, (before, after)
     return uuid.UUID(bytes=ffi.buffer(args.fsid))
 
 
