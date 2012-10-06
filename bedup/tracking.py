@@ -123,6 +123,8 @@ def track_updated_files(sess, vol, results_file, verbose_scan):
                 if not stat.S_ISREG(mode):
                     continue
                 ino = sh.objectid
+                if ino == 541144:  # Yeah...
+                    continue
                 inode, created = get_or_create(
                     sess, Inode, vol=vol, ino=ino)
                 inode.size = size
@@ -132,7 +134,7 @@ def track_updated_files(sess, vol, results_file, verbose_scan):
                         names = list(lookup_ino_paths(vol.fd, ino))
                     except IOError as e:
                         results_file.write('Error at path lookup: %r\n' % e)
-                        sess.remove(inode)
+                        sess.delete(inode)
                         continue
                     results_file.write(
                         'item type %d ino %d len %d'
