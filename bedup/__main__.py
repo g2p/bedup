@@ -50,20 +50,16 @@ def vol_cmd(args):
         set_idle_priority()
         for vol in volumes:
             # May raise IOError
-            track_updated_files(sess, vol, sys.stdout, args.verbose_scan)
+            track_updated_files(sess, vol)
             vols_by_fs[vol.fs].append(vol)
 
     if args.command == 'dedup-vol':
         for volset in vols_by_fs.itervalues():
-            dedup_tracked(sess, volset, sys.stdout)
+            dedup_tracked(sess, volset)
 
 
-def vol_flags(parser, command):
+def vol_flags(parser):
     parser.add_argument('volume', nargs='+', help='btrfs volumes')
-    if command in ('scan-vol', 'dedup-vol'):
-        parser.add_argument(
-            '--verbose-scan', action='store_true', dest='verbose_scan',
-            help='print inodes being scanned')
     parser.add_argument(
         '--verbose-sql', action='store_true', dest='verbose_sql',
         help='print SQL statements being executed')
@@ -81,17 +77,17 @@ def main():
     sp_scan_vol = commands.add_parser('scan-vol', description="""
 Scans listed volumes to keep track of potentially duplicated files.""")
     sp_scan_vol.set_defaults(action=vol_cmd)
-    vol_flags(sp_scan_vol, 'scan-vol')
+    vol_flags(sp_scan_vol)
 
     sp_dedup_vol = commands.add_parser('dedup-vol', description="""
 Runs scan-vol, then deduplicates identical files.""")
     sp_dedup_vol.set_defaults(action=vol_cmd)
-    vol_flags(sp_dedup_vol, 'dedup-vol')
+    vol_flags(sp_dedup_vol)
 
     sp_forget_vol = commands.add_parser('forget-vol', description="""
 Forget tracking data for the listed volumes. Mostly useful for testing.""")
     sp_forget_vol.set_defaults(action=vol_cmd)
-    vol_flags(sp_forget_vol, 'forget-vol')
+    vol_flags(sp_forget_vol)
 
     sp_dedup_files = commands.add_parser(
         'dedup-files', description="""

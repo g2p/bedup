@@ -5,6 +5,7 @@ import fcntl
 import hashlib
 import os
 import stat
+import ttystatus
 
 from .btrfs import (
     lookup_ino_paths, get_fsid, get_root_id,
@@ -61,7 +62,7 @@ def forget_vol(sess, vol):
     sess.commit()
 
 
-def track_updated_files(sess, vol, results_file, verbose_scan):
+def track_updated_files(sess, vol):
     from .btrfs import ffi, u64_max
 
     top_generation = get_root_generation(vol.fd)
@@ -70,8 +71,11 @@ def track_updated_files(sess, vol, results_file, verbose_scan):
         min_generation = vol.last_tracked_generation
     else:
         min_generation = 0
-    results_file.write(
-        'Scanning generations from %d to %d, with size cutoff %d\n'
+    ts = ttystatus.TerminalStatus(period=.1)
+    ts.format(
+        '%ElapsedTime() Scanning item %Counter(desc) %Pathname(path) %String(desc)')
+    ts.notify(
+        'Scanning generations from %d to %d, with size cutoff %d'
         % (min_generation, top_generation, vol.size_cutoff))
 
     args = ffi.new('struct btrfs_ioctl_search_args *')
@@ -142,44 +146,45 @@ def track_updated_files(sess, vol, results_file, verbose_scan):
                     # Fail early
                     names = list(lookup_ino_paths(vol.fd, ino))
                 except IOError as e:
-                    results_file.write('Error at path lookup: %r\n' % e)
+                    ts.notify('Error at path lookup: %r' % e)
                     if inode_created:
                         sess.expunge(inode)
                     else:
                         sess.delete(inode)
                     continue
 
-                if verbose_scan:
-                    results_file.write(
-                        'item type %d ino %d len %d'
-                        ' gen0 %d gen1 %d size %d names %r mode %o\n' % (
-                            sh.type, ino, sh.len,
-                            sh.transid, found_gen, size, names,
-                            mode))
+                ts['path'] = names[0]
+                ts['desc'] = (
+                        '(ino %d gen0 %d gen1 %d size %d)' % (
+                            ino, sh.transid, found_gen, size))
         sk.min_objectid = sh.objectid
         sk.min_type = sh.type
         sk.min_offset = sh.offset
 
         sk.min_offset += 1
+    ts.finish()
     vol.last_tracked_generation = top_generation
     vol.last_tracked_size_cutoff = vol.size_cutoff
     sess.commit()
 
 
-def dedup_tracked(sess, volset, results_file):
+def dedup_tracked(sess, volset):
     space_gain1 = space_gain2 = space_gain3 = 0
     vol_ids = [vol.id for vol in volset]
     fs = vol.fs
     assert all(vol.fs == fs for vol in volset)
     Commonality1, Commonality2, Commonality3 = comm_mappings(vol_ids)
 
-    for comm1 in sess.query(
-        Commonality1
-    ):
+    ts = ttystatus.TerminalStatus(period=.1)
+    # Make a list so we can get the length without querying twice
+    # Might be wasteful if the common set is really big though.
+    query = list(sess.query(Commonality1))
+    ts.format(
+        '%ElapsedTime() Partial hash of same-size groups '
+        '%Counter(comm1)/{le}'.format(le=len(query)))
+    for comm1 in query:
         space_gain1 += comm1.size * (len(comm1.inodes) - 1)
-        results_file.write(
-            'dupe candidates for size %d\n'
-            % (comm1.size, ))
+        ts['comm1'] = comm1
         for inode in comm1.inodes:
             # XXX Need to cope with deleted inodes.
             # We cannot find them in the search-new pass,
@@ -205,17 +210,17 @@ def dedup_tracked(sess, volset, results_file):
                 # being replaced by some other kind of inode.
                 sess.delete(inode)
                 continue
-            #results_file.write('paths %r ino %d\n' % (paths, inode.ino))
             rfile = fopenat(inode.vol.fd, paths[0])
             inode.mini_hash_from_file(rfile)
+    ts.finish()
+    ts.clear()
 
-    for comm2 in sess.query(
-        Commonality2
-    ):
+    query = list(sess.query(Commonality2))
+    ts.format(
+        '%ElapsedTime() Extent map %Counter(comm2)/{le}'.format(le=len(query)))
+    for comm2 in query:
         space_gain2 += comm2.size * (len(comm2.inodes) - 1)
-        results_file.write(
-            'dupe candidates for size %d\n'
-            % (comm2.size, ))
+        ts['comm2'] = comm2
         for inode in comm2.inodes:
             try:
                 paths = list(lookup_ino_paths(inode.vol.fd, inode.ino))
@@ -226,14 +231,16 @@ def dedup_tracked(sess, volset, results_file):
                 continue
             rfile = fopenat(inode.vol.fd, paths[0])
             inode.fiemap_hash_from_file(rfile)
+    ts.finish()
+    ts.clear()
 
-    for comm3 in sess.query(
-        Commonality3
-    ):
+    query = list(sess.query(Commonality3))
+    ts.format(
+        '%ElapsedTime() Full hash and deduplication %Counter(comm3)/{le}'
+        .format(le=len(query)))
+    for comm3 in query:
         space_gain3 += comm3.size * (len(comm3.inodes) - 1)
-        results_file.write(
-            'dupe candidates for size %d and mini_hash %#x\n'
-            % (comm3.size, comm3.mini_hash))
+        ts['comm3'] = comm3
         files = []
         fds = []
         fd_names = {}
@@ -242,7 +249,6 @@ def dedup_tracked(sess, volset, results_file):
 
         for inode in comm3.inodes:
             paths = list(lookup_ino_paths(inode.vol.fd, inode.ino))
-            #results_file.write('ino %d paths %s\n' % (inode.ino, paths))
             # Open everything rw, we can't pick one for the source side
             # yet because the crypto hash might eliminate it.
             # We may also want to defragment the source.
@@ -268,7 +274,7 @@ def dedup_tracked(sess, volset, results_file):
                 afd = afile.fileno()
                 if afd in immutability.fds_in_write_use:
                     aname = fd_names[afd]
-                    results_file.write('File %r is in use, skipping\n' % aname)
+                    ts.notify('File %r is in use, skipping' % aname)
                     continue
                 hasher = hashlib.sha1()
                 for buf in iter(lambda: afile.read(BUFSIZE), ''):
@@ -304,17 +310,15 @@ def dedup_tracked(sess, volset, results_file):
                     dname = fd_names[dfd]
                     if not cmp_files(sfile, dfile):
                         # Probably a bug since we just used a crypto hash
-                        results_file.write('Files differ: %r %r\n' % (
-                            sname, dname))
+                        ts.notify('Files differ: %r %r' % (sname, dname))
                         assert False, (sname, dname)
                         continue
                     if clone_data(dest=dfd, src=sfd, check_first=True):
-                        results_file.write(
-                            'Did dedup: %r %r\n' % (sname, dname))
+                        ts.notify('Deduplicated: %r %r' % (sname, dname))
                         dfiles_successful.append(dfile)
                     else:
-                        results_file.write(
-                            'Did not dedup (same extents): %r %r\n' % (
+                        ts.notify(
+                            'Did not deduplicate (same extents): %r %r' % (
                                 sname, dname))
                 if dfiles_successful:
                     evt = DedupEvent(
@@ -326,9 +330,11 @@ def dedup_tracked(sess, volset, results_file):
                             event=evt, ino=inode.ino, vol=inode.vol)
                         sess.add(evti)
                     sess.commit()
+    ts.finish()
+    ts.clear()
 
-    results_file.write(
-        'Potential space gain: pass 1 %d, pass 2 %d pass 3 %d\n' % (
+    ts.notify(
+        'Potential space gain: pass 1 %d, pass 2 %d pass 3 %d' % (
             space_gain1, space_gain2, space_gain3))
 
     sess.execute(
