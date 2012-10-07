@@ -9,6 +9,7 @@ import stat
 from .btrfs import (
     lookup_ino_paths, get_fsid, get_root_id,
     get_root_generation, clone_data, defragment)
+from .datetime import system_now
 from .dedup import ImmutableFDs, cmp_files
 from .openat import fopenat, fopenat_rw
 from .model import (
@@ -309,10 +310,11 @@ def dedup_tracked(sess, volset, results_file):
                             'Did not dedup (same extents): %r %r\n' % (
                                 sname, dname))
                 if dfiles_successful:
-                    evt = DedupEvent(fs=fs, item_size=comm3.size)
+                    evt = DedupEvent(
+                        fs=fs, item_size=comm3.size, created=system_now())
                     sess.add(evt)
-                    for dfile in dfiles_successful:
-                        inode = fd_inodes[dfile.fileno()]
+                    for afile in [sfile] + dfiles_successful:
+                        inode = fd_inodes[afile.fileno()]
                         evti = DedupEventInode(
                             event=evt, ino=inode.ino, vol=inode.vol)
                         sess.add(evti)

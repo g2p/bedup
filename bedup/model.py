@@ -4,12 +4,13 @@ from sqlalchemy.orm.exc import NoResultFound
 from sqlalchemy.sql import and_, select, func, literal_column, distinct
 from sqlalchemy.ext.declarative import declarative_base, declared_attr
 from sqlalchemy.ext.hybrid import hybrid_property
-from sqlalchemy.types import (Boolean, Integer, Text)
+from sqlalchemy.types import (Boolean, Integer, Text, DateTime, TypeDecorator)
 from sqlalchemy.schema import (
     Column, ForeignKey, UniqueConstraint, CheckConstraint)
 
 from zlib import adler32
 from . import fiemap
+from .datetime import UTC
 
 
 def FK(cattr, primary_key=False, backref=None, nullable=False):
@@ -20,6 +21,16 @@ def FK(cattr, primary_key=False, backref=None, nullable=False):
             primary_key=primary_key,
             nullable=nullable),
         relationship(cattr.parententity, backref=backref))
+
+
+class UTCDateTime(TypeDecorator):
+    impl = DateTime
+
+    def process_bind_param(self, value, engine):
+        return value.astimezone(UTC)
+
+    def process_result_value(self, value, engine):
+        return value.replace(tzinfo=UTC)
 
 
 # XXX I actually need create_or_update here
@@ -112,6 +123,7 @@ class DedupEvent(Base):
     fs_id, fs = FK(Filesystem.id)
 
     item_size = Column(Integer, index=True, nullable=False)
+    created = Column(UTCDateTime, index=True, nullable=False)
 
     @hybrid_property
     def estimated_space_gain(self):
