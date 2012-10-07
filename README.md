@@ -9,7 +9,7 @@ You need Linux 3.3 or newer.
 
 This should get you started on Debian/Ubuntu:
 
-    sudo aptitude install python-pip build-essentials git
+    sudo aptitude install python-pip python-dev libffi-dev build-essentials git
 
 # Installation
 
