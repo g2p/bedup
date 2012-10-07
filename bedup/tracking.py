@@ -260,7 +260,7 @@ def dedup_tracked(sess, volset, results_file):
                 afd = afile.fileno()
                 if afd in immutability.fds_in_write_use:
                     aname = fd_names[afd]
-                    results_file.write('File %r is in use, skipping' % aname)
+                    results_file.write('File %r is in use, skipping\n' % aname)
                     continue
                 hasher = hashlib.sha1()
                 for buf in iter(lambda: afile.read(BUFSIZE), ''):
