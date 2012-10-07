@@ -54,6 +54,13 @@ def get_vol(sess, volpath, size_cutoff):
     return vol
 
 
+def forget_vol(sess, vol):
+    # Forgets Inodes, not logging. Make that configurable?
+    sess.query(Inode).filter_by(vol=vol).delete()
+    vol.last_tracked_generation = 0
+    sess.commit()
+
+
 def track_updated_files(sess, vol, results_file, verbose_scan):
     from .btrfs import ffi, u64_max
 
