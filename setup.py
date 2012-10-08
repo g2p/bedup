@@ -14,6 +14,7 @@ setup(
     version='0.0.1',
     author='Gabriel de Perthuis',
     author_email='g2p.code@gmail.com',
+    license='GNU GPL',
     description='Deduplication for Btrfs filesystems',
     install_requires=[
         'argparse',  # only required for Python 2.6
