@@ -35,6 +35,7 @@ DEFAULT_SIZE_CUTOFF = 8 * 1024 ** 2
 
 
 def get_vol(sess, volpath, size_cutoff):
+    volpath = os.path.normpath(volpath)
     volume_fd = os.open(volpath, os.O_DIRECTORY)
     fs, fs_created = get_or_create(
         sess, Filesystem,
