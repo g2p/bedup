@@ -420,7 +420,6 @@ def volumes_from_root_tree(volume_fd):
         sk.min_offset = sh.offset + 1
 
 
-
 def get_root_generation(volume_fd):
     # Adapted from find_root_gen in btrfs-list.c
     # XXX I'm iffy about the search, we may not be using the most

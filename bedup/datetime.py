@@ -3,6 +3,7 @@ import datetime
 
 ZERO = datetime.timedelta(0)
 
+
 class Utc(datetime.tzinfo):
     def utcoffset(self, dt):
         return ZERO
@@ -14,6 +15,7 @@ class Utc(datetime.tzinfo):
         return ZERO
 
 UTC = Utc()
+
 
 def system_now():
     # datetime.utcnow is broken

@@ -5,7 +5,7 @@ from sqlalchemy.sql import and_, select, func, literal_column, distinct
 from sqlalchemy.ext.declarative import declarative_base, declared_attr
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.types import (
-    Boolean, Integer, Text, DateTime, TypeDecorator, Text)
+    Boolean, Integer, Text, DateTime, TypeDecorator)
 from sqlalchemy.schema import (
     Column, ForeignKey, UniqueConstraint, CheckConstraint)
 
