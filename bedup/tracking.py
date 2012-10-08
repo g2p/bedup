@@ -127,13 +127,13 @@ def track_updated_files(sess, vol):
                 if size < vol.size_cutoff:
                     continue
                 # XXX Should I use inner or outer gen in these checks?
-                # Switching to outer gen because the other seems to miss
-                # updates.
+                # Inner gen seems to miss updates (due to delalloc?),
+                # whereas outer gen has too many spurious updates.
                 if size >= vol.last_tracked_size_cutoff:
-                    if sh.transid <= vol.last_tracked_generation:
+                    if inode_gen <= vol.last_tracked_generation:
                         continue
                 else:
-                    if sh.transid <= min_generation:
+                    if inode_gen <= min_generation:
                         continue
                 if not stat.S_ISREG(mode):
                     continue
