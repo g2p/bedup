@@ -44,7 +44,7 @@ setup(
         Topic :: System :: Filesystems
         Topic :: Utilities
         Environment :: Console
-    ''',
+    '''.strip().splitlines(),
 
 )
 
