@@ -121,16 +121,19 @@ def track_updated_files(sess, vol):
             if sh.type == lib.BTRFS_INODE_ITEM_KEY:
                 item = ffi.cast(
                     'struct btrfs_inode_item *', sh + 1)
-                found_gen = lib.btrfs_stack_inode_generation(item)
+                inode_gen = lib.btrfs_stack_inode_generation(item)
                 size = lib.btrfs_stack_inode_size(item)
                 mode = lib.btrfs_stack_inode_mode(item)
                 if size < vol.size_cutoff:
                     continue
+                # XXX Should I use inner or outer gen in these checks?
+                # Switching to outer gen because the other seems to miss
+                # updates.
                 if size >= vol.last_tracked_size_cutoff:
-                    if found_gen <= vol.last_tracked_generation:
+                    if sh.transid <= vol.last_tracked_generation:
                         continue
                 else:
-                    if found_gen <= min_generation:
+                    if sh.transid <= min_generation:
                         continue
                 if not stat.S_ISREG(mode):
                     continue
@@ -155,8 +158,8 @@ def track_updated_files(sess, vol):
 
                 ts['path'] = names[0]
                 ts['desc'] = (
-                        '(ino %d gen0 %d gen1 %d size %d)' % (
-                            ino, sh.transid, found_gen, size))
+                        '(ino %d outer gen %d inner gen %d size %d)' % (
+                            ino, sh.transid, inode_gen, size))
         sk.min_objectid = sh.objectid
         sk.min_type = sh.type
         sk.min_offset = sh.offset
