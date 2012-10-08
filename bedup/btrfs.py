@@ -283,6 +283,8 @@ lib = ffi.verify('''
     include_dirs=[getcwd()])
 
 
+BTRFS_FIRST_FREE_OBJECTID = lib.BTRFS_FIRST_FREE_OBJECTID
+
 u64_max = ffi.cast('uint64_t', -1)
 
 
@@ -382,6 +384,41 @@ def get_root_id(volume_fd):
     args.objectid = lib.BTRFS_FIRST_FREE_OBJECTID
     ioctl_pybug(volume_fd, lib.BTRFS_IOC_INO_LOOKUP, ffi.buffer(args))
     return args.treeid
+
+
+def volumes_from_root_tree(volume_fd):
+    # Requires a scary amount of scanning, not just the root tree,
+    # needs to be combined with some inode resolution on mounted volumes
+    raise NotImplementedError
+
+    args = ffi.new('struct btrfs_ioctl_search_args *')
+    args_buffer = ffi.buffer(args)
+    sk = args.key
+
+    sk.tree_id = lib.BTRFS_ROOT_TREE_OBJECTID  # the tree of roots
+    sk.max_objectid = u64_max
+    sk.min_type = sk.max_type = lib.BTRFS_ROOT_BACKREF_KEY
+    sk.max_offset = u64_max
+    sk.max_transid = u64_max
+
+    while True:
+        sk.nr_items = 4096
+
+        ioctl_pybug(
+            volume_fd, lib.BTRFS_IOC_TREE_SEARCH, args_buffer)
+        if sk.nr_items == 0:
+            break
+
+        offset = 0
+        for item_id in xrange(sk.nr_items):
+            sh = ffi.cast(
+                'struct btrfs_ioctl_search_header *', args.buf + offset)
+            offset += ffi.sizeof('struct btrfs_ioctl_search_header') + sh.len
+            if sh.type == lib.BTRFS_ROOT_BACKREF_KEY:
+                item = ffi.cast('struct btrfs_root_ref *', sh + 1)
+
+        sk.min_offset = sh.offset + 1
+
 
 
 def get_root_generation(volume_fd):

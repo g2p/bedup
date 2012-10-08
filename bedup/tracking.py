@@ -12,7 +12,8 @@ import ttystatus
 
 from .btrfs import (
     lookup_ino_paths, get_fsid, get_root_id,
-    get_root_generation, clone_data, defragment)
+    get_root_generation, clone_data, defragment,
+    volumes_from_root_tree, BTRFS_FIRST_FREE_OBJECTID)
 from .datetime import system_now
 from .dedup import ImmutableFDs, cmp_files
 from .openat import fopenat, fopenat_rw
@@ -71,6 +72,18 @@ BLKID_RE = re.compile(
 
 
 def show_vols(sess):
+    mpoints_by_dev = collections.defaultdict(list)
+    with open('/proc/self/mountinfo') as mounts:
+        for line in mounts:
+            items = line.split()
+            idx = items.index('-')
+            fs_type = items[idx + 1]
+            if fs_type != 'btrfs':
+                continue
+            mpoint = items[4]
+            dev = items[idx + 2]
+            mpoints_by_dev[dev].append(mpoint)
+
     for line in subprocess.check_output(
         'blkid -s LABEL -s UUID -t TYPE=btrfs'.split()
     ).splitlines():
@@ -78,7 +91,21 @@ def show_vols(sess):
         sys.stdout.write('%s\n  Label: %s UUID: %s\n' % (dev, label, uuid))
         fs = sess.query(Filesystem).filter_by(uuid=uuid).scalar()
         if fs is not None:
+            for mpoint in mpoints_by_dev[dev]:
+                mpoint_fd = os.open(mpoint, os.O_DIRECTORY)
+                st = os.fstat(mpoint_fd)
+                if st.st_ino != BTRFS_FIRST_FREE_OBJECTID:
+                    # Not the root of a subvolume
+                    continue
+
+                if False:
+                    volumes_from_root_tree(mpoint_fd)
+
             for vol in fs.volumes:
+                # Show the volume path, which requires
+                # finding the volume in the tree of tree roots?
+                # That may require a subvol=/ mount, existing
+                # mounts may not exist or may not be at subvolume paths.
                 sys.stdout.write(
                     '    Volume %d last tracked generation %d size cutoff %d\n'
                     % (vol.root_id, vol.last_tracked_generation,
