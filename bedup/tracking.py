@@ -72,11 +72,11 @@ def track_updated_files(sess, vol):
     else:
         min_generation = 0
     ts = ttystatus.TerminalStatus(period=.1)
-    ts.format(
-        '%ElapsedTime() Scanning item %Counter(desc) %Pathname(path) %String(desc)')
     ts.notify(
-        'Scanning generations from %d to %d, with size cutoff %d'
-        % (min_generation, top_generation, vol.size_cutoff))
+        'Scanning volume %r generations from %d to %d, with size cutoff %d'
+        % (vol.desc, min_generation, top_generation, vol.size_cutoff))
+    ts.format(
+        '%ElapsedTime() Updated %Counter(desc) items: %Pathname(path) %String(desc)')
 
     args = ffi.new('struct btrfs_ioctl_search_args *')
     args_buffer = ffi.buffer(args)
