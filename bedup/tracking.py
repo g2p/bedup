@@ -176,15 +176,28 @@ def dedup_tracked(sess, volset):
     vol_ids = [vol.id for vol in volset]
     fs = vol.fs
     assert all(vol.fs == fs for vol in volset)
+
+    def end():
+        sess.execute(
+            Inode.__table__.update().where(
+                Inode.vol_id.in_(vol_ids)
+            ).values(
+                has_updates=False))
+        sess.commit()
+
     Commonality1, Commonality2, Commonality3 = comm_mappings(vol_ids)
 
     ts = ttystatus.TerminalStatus(period=.1)
     # Make a list so we can get the length without querying twice
     # Might be wasteful if the common set is really big though.
     query = list(sess.query(Commonality1))
+    le = len(query)
+    if not le:
+        end()
+        return
     ts.format(
         '%ElapsedTime() Partial hash of same-size groups '
-        '%Counter(comm1)/{le}'.format(le=len(query)))
+        '%Counter(comm1)/{le}'.format(le=le))
     for comm1 in query:
         space_gain1 += comm1.size * (len(comm1.inodes) - 1)
         ts['comm1'] = comm1
@@ -219,8 +232,12 @@ def dedup_tracked(sess, volset):
     ts.clear()
 
     query = list(sess.query(Commonality2))
+    le = len(query)
+    if not le:
+        end()
+        return
     ts.format(
-        '%ElapsedTime() Extent map %Counter(comm2)/{le}'.format(le=len(query)))
+        '%ElapsedTime() Extent map %Counter(comm2)/{le}'.format(le=le))
     for comm2 in query:
         space_gain2 += comm2.size * (len(comm2.inodes) - 1)
         ts['comm2'] = comm2
@@ -238,9 +255,13 @@ def dedup_tracked(sess, volset):
     ts.clear()
 
     query = list(sess.query(Commonality3))
+    le = len(query)
+    if not le:
+        end()
+        return
     ts.format(
         '%ElapsedTime() Full hash and deduplication %Counter(comm3)/{le}'
-        .format(le=len(query)))
+        .format(le=le))
     for comm3 in query:
         space_gain3 += comm3.size * (len(comm3.inodes) - 1)
         ts['comm3'] = comm3
@@ -340,10 +361,5 @@ def dedup_tracked(sess, volset):
         'Potential space gain: pass 1 %d, pass 2 %d pass 3 %d' % (
             space_gain1, space_gain2, space_gain3))
 
-    sess.execute(
-        Inode.__table__.update().where(
-            Inode.vol_id.in_(vol_ids)
-        ).values(
-            has_updates=False))
-    sess.commit()
+    end()
 
