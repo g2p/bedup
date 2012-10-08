@@ -80,9 +80,10 @@ def show_vols(sess):
             fs_type = items[idx + 1]
             if fs_type != 'btrfs':
                 continue
+            volpath = items[3]
             mpoint = items[4]
             dev = items[idx + 2]
-            mpoints_by_dev[dev].append(mpoint)
+            mpoints_by_dev[dev].append((volpath, mpoint))
 
     for line in subprocess.check_output(
         'blkid -s LABEL -s UUID -t TYPE=btrfs'.split()
@@ -92,7 +93,7 @@ def show_vols(sess):
         fs = sess.query(Filesystem).filter_by(uuid=uuid).scalar()
         if fs is not None:
             mpoint_by_root_id = collections.defaultdict(list)
-            for mpoint in mpoints_by_dev[dev]:
+            for (volpath, mpoint) in mpoints_by_dev[dev]:
                 mpoint_fd = os.open(mpoint, os.O_DIRECTORY)
                 st = os.fstat(mpoint_fd)
                 if st.st_ino != BTRFS_FIRST_FREE_OBJECTID:
@@ -100,7 +101,8 @@ def show_vols(sess):
                     continue
 
                 try:
-                    mpoint_by_root_id[get_root_id(mpoint_fd)].append(mpoint)
+                    mpoint_by_root_id[get_root_id(mpoint_fd)].append(
+                        (volpath, mpoint))
                     if False:
                         volumes_from_root_tree(mpoint_fd)
                 except IOError as e:
@@ -119,9 +121,9 @@ def show_vols(sess):
                        vol.size_cutoff))
 
                 if vol.root_id in mpoint_by_root_id:
-                    mpoints = mpoint_by_root_id[vol.root_id]
-                    for mpoint in mpoints:
+                    for (volpath, mpoint) in mpoint_by_root_id[vol.root_id]:
                         sys.stdout.write('      Mounted on %s\n' % mpoint)
+                    sys.stdout.write('      Path %s\n' % volpath)
 
 def track_updated_files(sess, vol):
     from .btrfs import ffi, u64_max
