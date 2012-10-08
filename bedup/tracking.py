@@ -4,7 +4,10 @@ import errno
 import fcntl
 import hashlib
 import os
+import re
 import stat
+import subprocess
+import sys
 import ttystatus
 
 from .btrfs import (
@@ -62,6 +65,26 @@ def forget_vol(sess, vol):
     sess.commit()
 
 
+BLKID_RE = re.compile(
+    '^(?P<dev>/dev/[^:]*): '
+    'LABEL="(?P<label>[^"]*)" UUID="(?P<uuid>[^"]*)"\s*$')
+
+
+def show_vols(sess):
+    for line in subprocess.check_output(
+        'blkid -s LABEL -s UUID -t TYPE=btrfs'.split()
+    ).splitlines():
+        dev, label, uuid = BLKID_RE.match(line).groups()
+        sys.stdout.write('%s\n  Label: %s UUID: %s\n' % (dev, label, uuid))
+        fs = sess.query(Filesystem).filter_by(uuid=uuid).scalar()
+        if fs is not None:
+            for vol in fs.volumes:
+                sys.stdout.write(
+                    '    Volume %d last tracked generation %d size cutoff %d\n'
+                    % (vol.root_id, vol.last_tracked_generation,
+                       vol.size_cutoff))
+
+
 def track_updated_files(sess, vol):
     from .btrfs import ffi, u64_max
 
@@ -76,7 +99,8 @@ def track_updated_files(sess, vol):
         'Scanning volume %r generations from %d to %d, with size cutoff %d'
         % (vol.desc, min_generation, top_generation, vol.size_cutoff))
     ts.format(
-        '%ElapsedTime() Updated %Counter(desc) items: %Pathname(path) %String(desc)')
+        '%ElapsedTime() Updated %Counter(desc) items: '
+        '%Pathname(path) %String(desc)')
 
     args = ffi.new('struct btrfs_ioctl_search_args *')
     args_buffer = ffi.buffer(args)

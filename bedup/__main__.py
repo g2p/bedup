@@ -13,7 +13,8 @@ from .btrfs import find_new
 from .dedup import dedup_same
 from .ioprio import set_idle_priority
 from .model import META
-from .tracking import get_vol, track_updated_files, dedup_tracked, forget_vol
+from .tracking import (
+    show_vols, get_vol, track_updated_files, dedup_tracked, forget_vol)
 
 
 APP_NAME = 'bedup'
@@ -29,7 +30,12 @@ def cmd_find_new(args):
     find_new(volume_fd, args.generation, sys.stdout)
 
 
-def vol_cmd(args):
+def cmd_show_vols(args):
+    sess = get_session(args)
+    show_vols(sess)
+
+
+def get_session(args):
     data_dir = xdg.BaseDirectory.save_data_path(APP_NAME)
     url = sqlalchemy.engine.url.URL(
         'sqlite', database=os.path.join(data_dir, 'db.sqlite'))
@@ -37,6 +43,11 @@ def vol_cmd(args):
     Session = sessionmaker(bind=engine)
     sess = Session()
     META.create_all(engine)
+    return sess
+
+
+def vol_cmd(args):
+    sess = get_session(args)
 
     volumes = set(
         get_vol(sess, volpath, args.size_cutoff) for volpath in args.volume)
@@ -58,11 +69,15 @@ def vol_cmd(args):
             dedup_tracked(sess, volset)
 
 
-def vol_flags(parser):
-    parser.add_argument('volume', nargs='+', help='btrfs volumes')
+def sql_flags(parser):
     parser.add_argument(
         '--verbose-sql', action='store_true', dest='verbose_sql',
         help='print SQL statements being executed')
+
+
+def vol_flags(parser):
+    parser.add_argument('volume', nargs='+', help='btrfs volumes')
+    sql_flags(parser)
     parser.add_argument(
         '--size-cutoff', type=int, dest='size_cutoff',
         help='Change the minimum size (in bytes) of tracked files '
@@ -88,6 +103,11 @@ Runs scan-vol, then deduplicates identical files.""")
 Forget tracking data for the listed volumes. Mostly useful for testing.""")
     sp_forget_vol.set_defaults(action=vol_cmd)
     vol_flags(sp_forget_vol)
+
+    sp_show_vols = commands.add_parser('show-vols', description="""
+Shows known volumes.""")
+    sp_show_vols.set_defaults(action=cmd_show_vols)
+    sql_flags(sp_show_vols)
 
     sp_dedup_files = commands.add_parser(
         'dedup-files', description="""
