@@ -20,7 +20,7 @@ setup(
         #'cffi >= 0.4',  # 0.4 is not released and confuses pip
         'pyxdg',
         'sqlalchemy',
-        'ttystatus',
+        'ttystatus',  # XXX Not uploaded to PyPI
     ],
     ext_modules=[
         bedup.btrfs.ffi.verifier.get_extension(),
