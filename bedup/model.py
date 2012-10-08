@@ -4,7 +4,8 @@ from sqlalchemy.orm.exc import NoResultFound
 from sqlalchemy.sql import and_, select, func, literal_column, distinct
 from sqlalchemy.ext.declarative import declarative_base, declared_attr
 from sqlalchemy.ext.hybrid import hybrid_property
-from sqlalchemy.types import (Boolean, Integer, Text, DateTime, TypeDecorator)
+from sqlalchemy.types import (
+    Boolean, Integer, Text, DateTime, TypeDecorator, Text)
 from sqlalchemy.schema import (
     Column, ForeignKey, UniqueConstraint, CheckConstraint)
 
@@ -76,6 +77,20 @@ class Volume(Base):
     last_tracked_generation = Column(Integer, nullable=False, default=0)
     last_tracked_size_cutoff = Column(Integer, nullable=True)
     size_cutoff = Column(Integer, nullable=False)
+
+
+class VolumePathHistory(Base):
+    id = Column(Integer, primary_key=True)
+    vol_id, vol = FK(Volume.id, backref='path_history')
+    # Paths in the / filesystem.
+    # Paths relative to the root volume is harder (see volumes_from_root_tree).
+    path = Column(Text, index=True, nullable=False)
+
+    __table_args__ = (
+        UniqueConstraint(
+            'vol_id', 'path'),
+        dict(
+            sqlite_autoincrement=True))
 
 
 class Inode(Base):

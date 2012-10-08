@@ -19,7 +19,7 @@ from .dedup import ImmutableFDs, cmp_files
 from .openat import fopenat, fopenat_rw
 from .model import (
     Filesystem, Volume, Inode, comm_mappings, get_or_create,
-    DedupEvent, DedupEventInode)
+    DedupEvent, DedupEventInode, VolumePathHistory)
 
 
 BUFSIZE = 8192
@@ -42,10 +42,14 @@ def get_vol(sess, volpath, size_cutoff):
     vol, vol_created = get_or_create(
         sess, Volume,
         fs=fs, root_id=get_root_id(volume_fd))
+
     if size_cutoff is not None:
         vol.size_cutoff = size_cutoff
     elif vol_created:
         vol.size_cutoff = DEFAULT_SIZE_CUTOFF
+
+    path_history, ph_created = get_or_create(
+        sess, VolumePathHistory, vol=vol, path=volpath)
 
     # If a volume was given multiple times on the command line,
     # keep the first name and fd for it.
