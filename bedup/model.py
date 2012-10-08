@@ -151,6 +151,9 @@ DedupEvent.inode_count = column_property(
 
 
 def comm_mappings(vol_ids):
+    # XXX Is there a way to factor the vol_id.in_ as a subquery?
+    # or to have a Comm3 -> Comm2 -> Comm1 relationship?
+
     class Commonality1(Base):
         __table__ = select([
             Inode.fs_id,
