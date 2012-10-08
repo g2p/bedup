@@ -14,7 +14,9 @@ setup(
     version='0.0.1',
     author='Gabriel de Perthuis',
     author_email='g2p.code+bedup@gmail.com',
+    url='https://github.com/g2p/bedup',
     license='GNU GPL',
+    keywords='btrfs deduplication dedup',
     description='Deduplication for Btrfs filesystems',
     install_requires=[
         'argparse',  # only required for Python 2.6
@@ -34,5 +36,16 @@ setup(
     packages=[
         'bedup',
     ],
+    classifiers='''
+        Programming Language :: Python :: 2
+        Programming Language :: Python :: Implementation :: CPython
+        Programming Language :: Python :: Implementation :: PyPy
+        License :: OSI Approved :: GNU General Public License (GPL)
+        Operating System :: POSIX :: Linux
+        Topic :: System :: Filesystems
+        Topic :: Utilities
+        Environment :: Console
+    ''',
+
 )
 
