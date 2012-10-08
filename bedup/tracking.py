@@ -91,6 +91,7 @@ def show_vols(sess):
         sys.stdout.write('%s\n  Label: %s UUID: %s\n' % (dev, label, uuid))
         fs = sess.query(Filesystem).filter_by(uuid=uuid).scalar()
         if fs is not None:
+            mpoint_by_root_id = collections.defaultdict(list)
             for mpoint in mpoints_by_dev[dev]:
                 mpoint_fd = os.open(mpoint, os.O_DIRECTORY)
                 st = os.fstat(mpoint_fd)
@@ -98,8 +99,14 @@ def show_vols(sess):
                     # Not the root of a subvolume
                     continue
 
-                if False:
-                    volumes_from_root_tree(mpoint_fd)
+                try:
+                    mpoint_by_root_id[get_root_id(mpoint_fd)].append(mpoint)
+                    if False:
+                        volumes_from_root_tree(mpoint_fd)
+                except IOError as e:
+                    if e.errno == errno.EPERM:
+                        break
+                    raise
 
             for vol in fs.volumes:
                 # Show the volume path, which requires
@@ -111,6 +118,10 @@ def show_vols(sess):
                     % (vol.root_id, vol.last_tracked_generation,
                        vol.size_cutoff))
 
+                if vol.root_id in mpoint_by_root_id:
+                    mpoints = mpoint_by_root_id[vol.root_id]
+                    for mpoint in mpoints:
+                        sys.stdout.write('      Mounted on %s\n' % mpoint)
 
 def track_updated_files(sess, vol):
     from .btrfs import ffi, u64_max
