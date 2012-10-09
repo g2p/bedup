@@ -53,11 +53,20 @@ def cmd_show_vols(args):
     show_vols(sess)
 
 
+def sql_setup(dbapi_con, con_record):
+    cur = dbapi_con.cursor()
+    cur.execute('PRAGMA foreign_keys = ON')
+    cur.execute('PRAGMA foreign_keys')
+    val = cur.fetchone()
+    assert val == (1,), val
+
+
 def get_session(args):
     data_dir = xdg.BaseDirectory.save_data_path(APP_NAME)
     url = sqlalchemy.engine.url.URL(
         'sqlite', database=os.path.join(data_dir, 'db.sqlite'))
     engine = sqlalchemy.engine.create_engine(url, echo=args.verbose_sql)
+    sqlalchemy.event.listen(engine, 'connect', sql_setup)
     Session = sessionmaker(bind=engine)
     sess = Session()
     META.create_all(engine)
