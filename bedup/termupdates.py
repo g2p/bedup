@@ -32,8 +32,33 @@ HIDE_CURSOR = '\x1b[?25l'
 SHOW_CURSOR = '\x1b[?25h'
 
 
-def format_duration(duration):
-    return '%f' % duration
+def format_duration(seconds):
+    subsec_prec = 2
+    minutes, seconds = divmod(seconds, 60)
+    if minutes:
+        subsec_prec = 1
+    hours, minutes = divmod(minutes, 60)
+    if hours:
+        subsec_prec = 0
+    days, hours = divmod(hours, 24)
+    weeks, days = divmod(days, 7)
+    greatest_unit = (
+        not weeks, not days, not hours, not minutes, not seconds, False
+    ).index(False)
+    rv = ''
+    if weeks:
+        rv += '%dW' % weeks
+    if days:
+        rv += '%dD' % days
+    if rv:
+        rv += ' '
+    if greatest_unit <= 2:
+        rv += '%02d:' % hours
+    if greatest_unit <= 3:
+        rv += '%02d:' % minutes
+    rv += '{seconds:.{subsec_prec}f}'.format(
+        seconds=seconds, subsec_prec=subsec_prec)
+    return rv
 
 
 class TermTemplate(object):
