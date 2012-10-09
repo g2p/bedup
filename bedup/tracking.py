@@ -266,10 +266,178 @@ def dedup_tracked(sess, volset):
     assert all(vol.fs == fs for vol in volset)
 
     Commonality1, Commonality2, Commonality3 = comm_mappings(vol_ids)
-
     tt = termupdates.TermTemplate()
 
-    def end():
+    try:
+
+        # Make a list so we can get the length without querying twice
+        # Might be wasteful if the common set is really big though.
+        query = list(sess.query(Commonality1))
+        le = len(query)
+        if not le:
+            return
+
+        tt.format(
+            '{elapsed} Partial hash of same-size groups '
+            '{comm1:counter}/{comm1:total}')
+        tt.set_total(comm1=le)
+        for comm1 in query:
+            space_gain1 += comm1.size * (len(comm1.inodes) - 1)
+            tt.update(comm1=comm1)
+            for inode in comm1.inodes:
+                # XXX Need to cope with deleted inodes.
+                # We cannot find them in the search-new pass,
+                # not without doing some tracking of directory modifications to
+                # poke updated directories to find removed elements.
+
+                # rehash everytime for now
+                # I don't know enough about how inode transaction numbers
+                # are updated (as opposed to extent updates)
+                # to be able to actually cache the result
+                try:
+                    paths = list(lookup_ino_paths(inode.vol.fd, inode.ino))
+                except IOError as e:
+                    if e.errno != errno.ENOENT:
+                        raise
+                    # We have a stale record for a removed inode
+                    # XXX If an inode number is reused and the second instance
+                    # is below the size cutoff, we won't update the .size
+                    # attribute and we won't get an IOError to notify us
+                    # either.  Inode reuse does happen (with and without
+                    # inode_cache), so this branch isn't enough to rid us of
+                    # all stale entries.  We can also get into trouble with
+                    # regular file inodes being replaced by some other kind of
+                    # inode.
+                    sess.delete(inode)
+                    continue
+                rfile = fopenat(inode.vol.fd, paths[0])
+                inode.mini_hash_from_file(rfile)
+
+        query = list(sess.query(Commonality2))
+        le = len(query)
+        if not le:
+            return
+        tt.format('{elapsed} Extent map {comm2:counter}/{comm2:total}')
+        tt.set_total(comm2=le)
+        for comm2 in query:
+            space_gain2 += comm2.size * (len(comm2.inodes) - 1)
+            tt.update(comm2=comm2)
+            for inode in comm2.inodes:
+                try:
+                    paths = list(lookup_ino_paths(inode.vol.fd, inode.ino))
+                except IOError as e:
+                    if e.errno != errno.ENOENT:
+                        raise
+                    sess.delete(inode)
+                    continue
+                rfile = fopenat(inode.vol.fd, paths[0])
+                inode.fiemap_hash_from_file(rfile)
+
+        query = list(sess.query(Commonality3))
+        le = len(query)
+        if not le:
+            return
+        tt.format(
+            '{elapsed} Full hash and deduplication '
+            '{comm3:counter}/{comm3:total}')
+        tt.set_total(comm3=le)
+        for comm3 in query:
+            space_gain3 += comm3.size * (len(comm3.inodes) - 1)
+            tt.update(comm3=comm3)
+            files = []
+            fds = []
+            fd_names = {}
+            fd_inodes = {}
+            by_hash = collections.defaultdict(list)
+
+            for inode in comm3.inodes:
+                paths = list(lookup_ino_paths(inode.vol.fd, inode.ino))
+                # Open everything rw, we can't pick one for the source side
+                # yet because the crypto hash might eliminate it.
+                # We may also want to defragment the source.
+                try:
+                    afile = fopenat_rw(inode.vol.fd, paths[0])
+                except IOError as e:
+                    # File contains the image of a running process,
+                    # we can't open it in write mode.
+                    if e.errno == errno.ETXTBSY:
+                        continue
+                    raise
+
+                # It's not completely guaranteed we have the right inode,
+                # there may still be race conditions at this point.
+                # Gets re-checked below (tell and fstat).
+                fd_inodes[afile.fileno()] = inode
+                fd_names[afile.fileno()] = paths[0]
+                files.append(afile)
+                fds.append(afile.fileno())
+
+            with ImmutableFDs(fds) as immutability:
+                for afile in files:
+                    afd = afile.fileno()
+                    if afd in immutability.fds_in_write_use:
+                        aname = fd_names[afd]
+                        tt.notify('File %r is in use, skipping' % aname)
+                        continue
+                    hasher = hashlib.sha1()
+                    for buf in iter(lambda: afile.read(BUFSIZE), ''):
+                        hasher.update(buf)
+
+                    # Mostly for the sake of correct logging, might also
+                    # prevent some form of security exploitation.
+                    # The file will pop up in the next scan anyway.
+                    if afile.tell() != comm3.size:
+                        continue
+                    st = os.fstat(afd)
+                    if st.st_ino != fd_inodes[afd].ino:
+                        continue
+                    if st.st_dev != fd_inodes[afd].vol.st_dev:
+                        continue
+
+                    by_hash[hasher.digest()].append(afile)
+
+                for fileset in by_hash.itervalues():
+                    if len(fileset) < 2:
+                        continue
+                    sfile = fileset[0]
+                    sfd = sfile.fileno()
+                    # Commented out, defragmentation can unshare extents.
+                    # It can also disable compression as a side-effect.
+                    if False:
+                        defragment(sfd)
+                    dfiles = fileset[1:]
+                    dfiles_successful = []
+                    for dfile in dfiles:
+                        dfd = dfile.fileno()
+                        sname = fd_names[sfd]
+                        dname = fd_names[dfd]
+                        if not cmp_files(sfile, dfile):
+                            # Probably a bug since we just used a crypto hash
+                            tt.notify('Files differ: %r %r' % (sname, dname))
+                            assert False, (sname, dname)
+                            continue
+                        if clone_data(dest=dfd, src=sfd, check_first=True):
+                            tt.notify('Deduplicated: %r %r' % (sname, dname))
+                            dfiles_successful.append(dfile)
+                        else:
+                            tt.notify(
+                                'Did not deduplicate (same extents): %r %r' % (
+                                    sname, dname))
+                    if dfiles_successful:
+                        evt = DedupEvent(
+                            fs=fs, item_size=comm3.size, created=system_now())
+                        sess.add(evt)
+                        for afile in [sfile] + dfiles_successful:
+                            inode = fd_inodes[afile.fileno()]
+                            evti = DedupEventInode(
+                                event=evt, ino=inode.ino, vol=inode.vol)
+                            sess.add(evti)
+                        sess.commit()
+
+        tt.notify(
+            'Potential space gain: pass 1 %d, pass 2 %d pass 3 %d' % (
+                space_gain1, space_gain2, space_gain3))
+    finally:
         tt.finish()
         sess.execute(
             Inode.__table__.update().where(
@@ -277,171 +445,4 @@ def dedup_tracked(sess, volset):
             ).values(
                 has_updates=False))
         sess.commit()
-
-    # Make a list so we can get the length without querying twice
-    # Might be wasteful if the common set is really big though.
-    query = list(sess.query(Commonality1))
-    le = len(query)
-    if not le:
-        return end()
-
-    tt.format(
-        '{elapsed} Partial hash of same-size groups '
-        '{comm1:counter}/{comm1:total}')
-    tt.set_total(comm1=le)
-    for comm1 in query:
-        space_gain1 += comm1.size * (len(comm1.inodes) - 1)
-        tt.update(comm1=comm1)
-        for inode in comm1.inodes:
-            # XXX Need to cope with deleted inodes.
-            # We cannot find them in the search-new pass,
-            # not without doing some tracking of directory modifications to
-            # poke updated directories to find removed elements.
-
-            # rehash everytime for now
-            # I don't know enough about how inode transaction numbers
-            # are updated (as opposed to extent updates)
-            # to be able to actually cache the result
-            try:
-                paths = list(lookup_ino_paths(inode.vol.fd, inode.ino))
-            except IOError as e:
-                if e.errno != errno.ENOENT:
-                    raise
-                # We have a stale record for a removed inode
-                # XXX If an inode number is reused and the second instance is
-                # below the size cutoff, we won't update the .size
-                # attribute and we won't get an IOError to notify us either.
-                # Inode reuse does happen (with and without inode_cache),
-                # so this branch isn't enough to rid us of all stale entries.
-                # We can also get into trouble with regular file inodes
-                # being replaced by some other kind of inode.
-                sess.delete(inode)
-                continue
-            rfile = fopenat(inode.vol.fd, paths[0])
-            inode.mini_hash_from_file(rfile)
-
-    query = list(sess.query(Commonality2))
-    le = len(query)
-    if not le:
-        return end()
-    tt.format('{elapsed} Extent map {comm2:counter}/{comm2:total}')
-    tt.set_total(comm2=le)
-    for comm2 in query:
-        space_gain2 += comm2.size * (len(comm2.inodes) - 1)
-        tt.update(comm2=comm2)
-        for inode in comm2.inodes:
-            try:
-                paths = list(lookup_ino_paths(inode.vol.fd, inode.ino))
-            except IOError as e:
-                if e.errno != errno.ENOENT:
-                    raise
-                sess.delete(inode)
-                continue
-            rfile = fopenat(inode.vol.fd, paths[0])
-            inode.fiemap_hash_from_file(rfile)
-
-    query = list(sess.query(Commonality3))
-    le = len(query)
-    if not le:
-        return end()
-    tt.format(
-        '{elapsed} Full hash and deduplication {comm3:counter}/{comm3:total}')
-    tt.set_total(comm3=le)
-    for comm3 in query:
-        space_gain3 += comm3.size * (len(comm3.inodes) - 1)
-        tt.update(comm3=comm3)
-        files = []
-        fds = []
-        fd_names = {}
-        fd_inodes = {}
-        by_hash = collections.defaultdict(list)
-
-        for inode in comm3.inodes:
-            paths = list(lookup_ino_paths(inode.vol.fd, inode.ino))
-            # Open everything rw, we can't pick one for the source side
-            # yet because the crypto hash might eliminate it.
-            # We may also want to defragment the source.
-            try:
-                afile = fopenat_rw(inode.vol.fd, paths[0])
-            except IOError as e:
-                # File contains the image of a running process,
-                # we can't open it in write mode.
-                if e.errno == errno.ETXTBSY:
-                    continue
-                raise
-
-            # It's not completely guaranteed we have the right inode,
-            # there may still be race conditions at this point.
-            # Gets re-checked below (tell and fstat).
-            fd_inodes[afile.fileno()] = inode
-            fd_names[afile.fileno()] = paths[0]
-            files.append(afile)
-            fds.append(afile.fileno())
-
-        with ImmutableFDs(fds) as immutability:
-            for afile in files:
-                afd = afile.fileno()
-                if afd in immutability.fds_in_write_use:
-                    aname = fd_names[afd]
-                    tt.notify('File %r is in use, skipping' % aname)
-                    continue
-                hasher = hashlib.sha1()
-                for buf in iter(lambda: afile.read(BUFSIZE), ''):
-                    hasher.update(buf)
-
-                # Mostly for the sake of correct logging, might also
-                # prevent some form of security exploitation.
-                # The file will pop up in the next scan anyway.
-                if afile.tell() != comm3.size:
-                    continue
-                st = os.fstat(afd)
-                if st.st_ino != fd_inodes[afd].ino:
-                    continue
-                if st.st_dev != fd_inodes[afd].vol.st_dev:
-                    continue
-
-                by_hash[hasher.digest()].append(afile)
-
-            for fileset in by_hash.itervalues():
-                if len(fileset) < 2:
-                    continue
-                sfile = fileset[0]
-                sfd = sfile.fileno()
-                # XXX Make this optional, defragmentation can unshare extents.
-                # It can also disable compression as a side-effect.
-                if False:
-                    defragment(sfd)
-                dfiles = fileset[1:]
-                dfiles_successful = []
-                for dfile in dfiles:
-                    dfd = dfile.fileno()
-                    sname = fd_names[sfd]
-                    dname = fd_names[dfd]
-                    if not cmp_files(sfile, dfile):
-                        # Probably a bug since we just used a crypto hash
-                        tt.notify('Files differ: %r %r' % (sname, dname))
-                        assert False, (sname, dname)
-                        continue
-                    if clone_data(dest=dfd, src=sfd, check_first=True):
-                        tt.notify('Deduplicated: %r %r' % (sname, dname))
-                        dfiles_successful.append(dfile)
-                    else:
-                        tt.notify(
-                            'Did not deduplicate (same extents): %r %r' % (
-                                sname, dname))
-                if dfiles_successful:
-                    evt = DedupEvent(
-                        fs=fs, item_size=comm3.size, created=system_now())
-                    sess.add(evt)
-                    for afile in [sfile] + dfiles_successful:
-                        inode = fd_inodes[afile.fileno()]
-                        evti = DedupEventInode(
-                            event=evt, ino=inode.ino, vol=inode.vol)
-                        sess.add(evti)
-                    sess.commit()
-
-    tt.notify(
-        'Potential space gain: pass 1 %d, pass 2 %d pass 3 %d' % (
-            space_gain1, space_gain2, space_gain3))
-    end()
 
