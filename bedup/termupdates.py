@@ -132,8 +132,9 @@ class TermTemplate(object):
                 self._stream.flush()
 
     def notify(self, message):
-        self._render(with_newline=True)
-        self._stream.write(message + '\n')
+        self._stream.write(
+            CLEAR_LINE + TTY_DOWRAP + message + '\n' + TTY_NOWRAP)
+        self._render(with_newline=False)
 
     def finish(self):
         self._render(with_newline=True)
