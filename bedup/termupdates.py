@@ -33,13 +33,13 @@ SHOW_CURSOR = '\x1b[?25h'
 
 
 def format_duration(seconds):
-    subsec_prec = 2
+    sec_format = '%05.2f'
     minutes, seconds = divmod(seconds, 60)
     if minutes:
-        subsec_prec = 1
+        sec_format = '%04.1f'
     hours, minutes = divmod(minutes, 60)
     if hours:
-        subsec_prec = 0
+        sec_format = '%02d'
     days, hours = divmod(hours, 24)
     weeks, days = divmod(days, 7)
     greatest_unit = (
@@ -56,8 +56,7 @@ def format_duration(seconds):
         rv += '%02d:' % hours
     if greatest_unit <= 3:
         rv += '%02d:' % minutes
-    rv += '{seconds:.{subsec_prec}f}'.format(
-        seconds=seconds, subsec_prec=subsec_prec)
+    rv += sec_format % seconds
     return rv
 
 
