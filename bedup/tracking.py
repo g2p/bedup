@@ -443,6 +443,5 @@ def dedup_tracked(sess, volset):
     tt.notify(
         'Potential space gain: pass 1 %d, pass 2 %d pass 3 %d' % (
             space_gain1, space_gain2, space_gain3))
-    tt.finish()
     end()
 
