@@ -237,7 +237,8 @@ def track_updated_files(sess, vol):
                     # Fail early
                     names = list(lookup_ino_paths(vol.fd, ino))
                 except IOError as e:
-                    tt.notify('Error at path lookup: %r' % e)
+                    tt.notify(
+                        'Error at path lookup of inode %d: %r' % (ino, e))
                     if inode_created:
                         sess.expunge(inode)
                     else:
@@ -269,7 +270,6 @@ def dedup_tracked(sess, volset):
     tt = termupdates.TermTemplate()
 
     try:
-
         # Make a list so we can get the length without querying twice
         # Might be wasteful if the common set is really big though.
         query = list(sess.query(Commonality1))
