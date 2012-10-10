@@ -68,7 +68,6 @@ class TermTemplate(object):
         self._kws_totals = {}
         self._stream = sys.stdout
         self._isatty = self._stream.isatty()
-        self._stream.write(TTY_NOWRAP)
 
     def update(self, **kwargs):
         self._kws.update(kwargs)
@@ -91,7 +90,7 @@ class TermTemplate(object):
 
     def _render(self, with_newline):
         if self._template is not None:
-            self._stream.write(CLEAR_LINE)
+            self._stream.write(CLEAR_LINE + TTY_NOWRAP)
             for (
                 literal_text, field_name, format_spec, conversion
             ) in self._template:
@@ -129,15 +128,16 @@ class TermTemplate(object):
                 self._stream.write('\n')
             else:
                 self._stream.flush()
+            # Just in case we get an inopportune SIGKILL,
+            # write immediately and don't rely on finish: clauses.
+            self._stream.write(TTY_DOWRAP)
 
     def notify(self, message):
-        self._stream.write(
-            CLEAR_LINE + TTY_DOWRAP + message + '\n' + TTY_NOWRAP)
+        self._stream.write(CLEAR_LINE + message + '\n')
         self._render(with_newline=False)
 
     def finish(self):
         self._render(with_newline=True)
-        self._stream.write(TTY_DOWRAP)
         self._stream.flush()
         self._stream = None
 
