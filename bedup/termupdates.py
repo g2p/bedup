@@ -136,7 +136,8 @@ class TermTemplate(object):
         self._stream.write(CLEAR_LINE + message + '\n')
         self._render(with_newline=False)
 
-    def finish(self):
+    def close(self):
+        # Can be used with contextlib.closing
         self._render(with_newline=True)
         self._stream.flush()
         self._stream = None

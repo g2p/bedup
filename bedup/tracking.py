@@ -254,7 +254,7 @@ def track_updated_files(sess, vol):
         sk.min_offset = sh.offset
 
         sk.min_offset += 1
-    tt.finish()
+    tt.close()
     vol.last_tracked_generation = top_generation
     vol.last_tracked_size_cutoff = vol.size_cutoff
     sess.commit()
@@ -438,7 +438,7 @@ def dedup_tracked(sess, volset):
             'Potential space gain: pass 1 %d, pass 2 %d pass 3 %d' % (
                 space_gain1, space_gain2, space_gain3))
     finally:
-        tt.finish()
+        tt.close()
         sess.execute(
             Inode.__table__.update().where(
                 Inode.vol_id.in_(vol_ids)
