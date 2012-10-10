@@ -97,3 +97,9 @@ snapshots.
 
 Before Linux 3.6, the clone call didn't work across subvolumes.
 
+## Screen
+
+If you have file names with double-width CJK characters and you use screen,
+the display will be a bit messed up (with extraneous line jumps after those
+file names).
+
