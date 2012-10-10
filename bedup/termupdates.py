@@ -104,11 +104,13 @@ class TermTemplate(object):
         # Don't forget to flush
         if self._wraps:
             self._write_tty(TTY_NOWRAP)
+            self._wraps = False
 
     def _dowrap(self):
         # Don't forget to flush
         if not self._wraps:
             self._write_tty(TTY_DOWRAP)
+            self._wraps = True
 
     def _render(self, with_newline):
         if (self._template is not None) and (self._isatty or with_newline):
@@ -163,7 +165,7 @@ class TermTemplate(object):
         self._render(with_newline=False)
 
     def close(self):
-        # Can be used with contextlib.closing
+        # Called close so it can be used with contextlib.closing
         self._render(with_newline=True)
         self._dowrap()
         self._stream.flush()
