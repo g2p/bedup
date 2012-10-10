@@ -434,12 +434,17 @@ def dedup_tracked(sess, volset):
         tt.notify(
             'Potential space gain: pass 1 %d, pass 2 %d pass 3 %d' % (
                 space_gain1, space_gain2, space_gain3))
-    finally:
-        tt.close()
+    except:
+        # Empty except just so that we can have an else: branch,
+        # when returning without errors.
+        raise
+    else:
         sess.execute(
             Inode.__table__.update().where(
                 Inode.vol_id.in_(vol_ids)
             ).values(
                 has_updates=False))
         sess.commit()
+    finally:
+        tt.close()
 
