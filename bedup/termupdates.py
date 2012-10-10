@@ -88,9 +88,13 @@ class TermTemplate(object):
         self._time = monotonic_time()
         self._render(with_newline=False)
 
+    def _write_tty(self, data):
+        if self._isatty:
+            self._stream.write(data)
+
     def _render(self, with_newline):
-        if self._template is not None:
-            self._stream.write(CLEAR_LINE + TTY_NOWRAP)
+        if (self._template is not None) and (self._isatty or with_newline):
+            self._write_tty(CLEAR_LINE + TTY_NOWRAP)
             for (
                 literal_text, field_name, format_spec, conversion
             ) in self._template:
@@ -126,14 +130,15 @@ class TermTemplate(object):
                         assert False, format_spec
             # Just in case we get an inopportune SIGKILL,
             # write immediately and don't rely on finish: clauses.
-            self._stream.write(TTY_DOWRAP)
+            self._write_tty(TTY_DOWRAP)
             if with_newline:
                 self._stream.write('\n')
             else:
                 self._stream.flush()
 
     def notify(self, message):
-        self._stream.write(CLEAR_LINE + message + '\n')
+        self._write_tty(CLEAR_LINE)
+        self._stream.write(message + '\n')
         self._render(with_newline=False)
 
     def close(self):
