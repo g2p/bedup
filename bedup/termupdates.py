@@ -28,12 +28,11 @@ _formatter = string.Formatter()
 LINE_START = '\r'
 CLEAR_END_OF_LINE = '\x1b[K'
 CLEAR_LINE = LINE_START + CLEAR_END_OF_LINE
-# XXX nowrap doesn't work well in gnome-term (libvte) with some non-ascii
-# characters that are twice as wide in a monospace font.
-# urxvt, aterm and xterm work fine.
-# xfce4-terminal works fine, and it is vte-based.
+# XXX nowrap doesn't work well in screen (over gnome-term, libvte)
+# with some non-ascii characters that are twice as wide in a monospace font.
+# All tested terms (urxvt, aterm, xterm, xfce4-terminal, gnome-terminal)
+# work fine without screen, for either value of VTE_CJK_WIDTH.
 # See: CJK double-width/bi-width
-# both xfce4 and gnome behave the same way for either value of VTE_CJK_WIDTH
 TTY_NOWRAP = '\x1b[?7l'
 TTY_DOWRAP = '\x1b[?7h'
 HIDE_CURSOR = '\x1b[?25l'
