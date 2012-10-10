@@ -336,6 +336,8 @@ def lookup_ino_paths(volume_fd, ino, alloc_extra=0):
     assert alloc_extra >= 0
     # XXX We're getting some funky overflows here
     # inode-resolve -v 541144
+    # NB: as of 3.6.1 the kernel will allow at most 4096 bytes here,
+    # from the min_t in fs/btrfs/ioctl.c
     alloc_size = 4096 + alloc_extra
 
     # keep a reference around; args.fspath isn't a reference after the cast
