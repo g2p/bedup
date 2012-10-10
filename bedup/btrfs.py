@@ -363,9 +363,13 @@ def lookup_ino_paths(volume_fd, ino, alloc_extra=0):
         else:
             # The +1024 is some extra padding so we don't have to realloc twice
             # if someone is creating hardlinks while we run.
+            # The + 8 * is a workaround for the kernel being a little off
+            # in its pointer logic.
             # Want: yield from
             for el in lookup_ino_paths(
-                volume_fd, ino, data_container.bytes_missing + 1024):
+                volume_fd, ino,
+                data_container.bytes_missing + 1024
+                + 8 * data_container.elem_missed):
                 yield el
             return
 
