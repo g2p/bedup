@@ -34,7 +34,6 @@ from .btrfs import (
 from .datetime import system_now
 from .dedup import ImmutableFDs, cmp_files
 from .openat import fopenat, fopenat_rw
-from . import termupdates
 from .model import (
     Filesystem, Volume, Inode, comm_mappings, get_or_create,
     DedupEvent, DedupEventInode, VolumePathHistory)
@@ -149,7 +148,7 @@ def show_vols(sess):
                     sys.stdout.write('      Path %s\n' % volpath)
 
 
-def track_updated_files(sess, vol):
+def track_updated_files(sess, vol, tt):
     from .btrfs import ffi, u64_max
 
     top_generation = get_root_generation(vol.fd)
@@ -158,7 +157,6 @@ def track_updated_files(sess, vol):
         min_generation = vol.last_tracked_generation
     else:
         min_generation = 0
-    tt = termupdates.TermTemplate()
     tt.notify(
         'Scanning volume %r generations from %d to %d, with size cutoff %d'
         % (vol.desc, min_generation, top_generation, vol.size_cutoff))
@@ -251,20 +249,18 @@ def track_updated_files(sess, vol):
         sk.min_offset = sh.offset
 
         sk.min_offset += 1
-    tt.close()
     vol.last_tracked_generation = top_generation
     vol.last_tracked_size_cutoff = vol.size_cutoff
     sess.commit()
 
 
-def dedup_tracked(sess, volset):
+def dedup_tracked(sess, volset, tt):
     space_gain1 = space_gain2 = space_gain3 = 0
     vol_ids = [vol.id for vol in volset]
     fs = vol.fs
     assert all(vol.fs == fs for vol in volset)
 
     Commonality1, Commonality2, Commonality3 = comm_mappings(vol_ids)
-    tt = termupdates.TermTemplate()
 
     try:
         # Make a list so we can get the length without querying twice
@@ -445,6 +441,4 @@ def dedup_tracked(sess, volset):
             ).values(
                 has_updates=False))
         sess.commit()
-    finally:
-        tt.close()
 

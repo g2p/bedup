@@ -25,12 +25,14 @@ import sqlalchemy
 import sys
 import xdg.BaseDirectory  # pyxdg, apt:python-xdg
 
+from contextlib import closing
 from sqlalchemy.orm import sessionmaker
 
 from .btrfs import find_new
 from .dedup import dedup_same
 from .ioprio import set_idle_priority
 from .model import META
+from .termupdates import TermTemplate
 from .tracking import (
     show_vols, get_vol, track_updated_files, dedup_tracked, forget_vol)
 
@@ -80,20 +82,21 @@ def vol_cmd(args):
         get_vol(sess, volpath, args.size_cutoff) for volpath in args.volume)
     vols_by_fs = collections.defaultdict(list)
 
-    if args.command == 'forget-vol':
-        for vol in volumes:
-            forget_vol(sess, vol)
+    with closing(TermTemplate()) as tt:
+        if args.command == 'forget-vol':
+            for vol in volumes:
+                forget_vol(sess, vol)
 
-    if args.command in ('scan-vol', 'dedup-vol'):
-        set_idle_priority()
-        for vol in volumes:
-            # May raise IOError
-            track_updated_files(sess, vol)
-            vols_by_fs[vol.fs].append(vol)
+        if args.command in ('scan-vol', 'dedup-vol'):
+            set_idle_priority()
+            for vol in volumes:
+                # May raise IOError
+                track_updated_files(sess, vol, tt)
+                vols_by_fs[vol.fs].append(vol)
 
-    if args.command == 'dedup-vol':
-        for volset in vols_by_fs.itervalues():
-            dedup_tracked(sess, volset)
+        if args.command == 'dedup-vol':
+            for volset in vols_by_fs.itervalues():
+                dedup_tracked(sess, volset, tt)
 
 
 def sql_flags(parser):
