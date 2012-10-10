@@ -10,7 +10,7 @@ import bedup.openat
 
 setup(
     name='bedup',
-    version='0.0.2',
+    version='0.0.3dev',
     author='Gabriel de Perthuis',
     author_email='g2p.code+bedup@gmail.com',
     url='https://github.com/g2p/bedup',
