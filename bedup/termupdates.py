@@ -124,13 +124,13 @@ class TermTemplate(object):
                             '%d' % self._kws_counter[field_name])
                     else:
                         assert False, format_spec
+            # Just in case we get an inopportune SIGKILL,
+            # write immediately and don't rely on finish: clauses.
+            self._stream.write(TTY_DOWRAP)
             if with_newline:
                 self._stream.write('\n')
             else:
                 self._stream.flush()
-            # Just in case we get an inopportune SIGKILL,
-            # write immediately and don't rely on finish: clauses.
-            self._stream.write(TTY_DOWRAP)
 
     def notify(self, message):
         self._stream.write(CLEAR_LINE + message + '\n')
