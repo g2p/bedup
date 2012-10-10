@@ -36,7 +36,7 @@ def fopenat(fd, path):
 
     fd1 = lib.openat(fd, path, os.O_RDONLY)
     if fd1 < 0:
-        raise IOError(ffi.errno, os.strerror(ffi.errno))
+        raise IOError(ffi.errno, os.strerror(ffi.errno), fd, path)
     return os.fdopen(fd1)
 
 
@@ -47,7 +47,7 @@ def fopenat_rw(fd, path):
 
     fd1 = lib.openat(fd, path, os.O_RDWR)
     if fd1 < 0:
-        raise IOError(ffi.errno, os.strerror(ffi.errno))
+        raise IOError(ffi.errno, os.strerror(ffi.errno), fd, path)
     return os.fdopen(fd1, 'r+')
 
 

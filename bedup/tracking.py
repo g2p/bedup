@@ -28,7 +28,7 @@ import subprocess
 import sys
 
 from .btrfs import (
-    lookup_ino_paths, get_fsid, get_root_id,
+    lookup_ino_path_one, get_fsid, get_root_id,
     get_root_generation, clone_data, defragment,
     volumes_from_root_tree, BTRFS_FIRST_FREE_OBJECTID)
 from .datetime import system_now
@@ -226,16 +226,13 @@ def track_updated_files(sess, vol):
                 if not stat.S_ISREG(mode):
                     continue
                 ino = sh.objectid
-                if ino in (541144, 691635, 1379998):  # Yeah...
-                    continue
                 inode, inode_created = get_or_create(
                     sess, Inode, vol=vol, ino=ino)
                 inode.size = size
                 inode.has_updates = True
 
                 try:
-                    # Fail early
-                    names = list(lookup_ino_paths(vol.fd, ino))
+                    path = lookup_ino_path_one(vol.fd, ino)
                 except IOError as e:
                     tt.notify(
                         'Error at path lookup of inode %d: %r' % (ino, e))
@@ -245,7 +242,7 @@ def track_updated_files(sess, vol):
                         sess.delete(inode)
                     continue
 
-                tt.update(path=names[0])
+                tt.update(path=path)
                 tt.update(
                     desc='(ino %d outer gen %d inner gen %d size %d)' % (
                         ino, sh.transid, inode_gen, size))
@@ -295,7 +292,7 @@ def dedup_tracked(sess, volset):
                 # are updated (as opposed to extent updates)
                 # to be able to actually cache the result
                 try:
-                    paths = list(lookup_ino_paths(inode.vol.fd, inode.ino))
+                    path = lookup_ino_path_one(inode.vol.fd, inode.ino)
                 except IOError as e:
                     if e.errno != errno.ENOENT:
                         raise
@@ -310,7 +307,7 @@ def dedup_tracked(sess, volset):
                     # inode.
                     sess.delete(inode)
                     continue
-                rfile = fopenat(inode.vol.fd, paths[0])
+                rfile = fopenat(inode.vol.fd, path)
                 inode.mini_hash_from_file(rfile)
 
         query = list(sess.query(Commonality2))
@@ -324,13 +321,13 @@ def dedup_tracked(sess, volset):
             tt.update(comm2=comm2)
             for inode in comm2.inodes:
                 try:
-                    paths = list(lookup_ino_paths(inode.vol.fd, inode.ino))
+                    path = lookup_ino_path_one(inode.vol.fd, inode.ino)
                 except IOError as e:
                     if e.errno != errno.ENOENT:
                         raise
                     sess.delete(inode)
                     continue
-                rfile = fopenat(inode.vol.fd, paths[0])
+                rfile = fopenat(inode.vol.fd, path)
                 inode.fiemap_hash_from_file(rfile)
 
         query = list(sess.query(Commonality3))
@@ -351,12 +348,12 @@ def dedup_tracked(sess, volset):
             by_hash = collections.defaultdict(list)
 
             for inode in comm3.inodes:
-                paths = list(lookup_ino_paths(inode.vol.fd, inode.ino))
+                path = lookup_ino_path_one(inode.vol.fd, inode.ino)
                 # Open everything rw, we can't pick one for the source side
                 # yet because the crypto hash might eliminate it.
                 # We may also want to defragment the source.
                 try:
-                    afile = fopenat_rw(inode.vol.fd, paths[0])
+                    afile = fopenat_rw(inode.vol.fd, path)
                 except IOError as e:
                     # File contains the image of a running process,
                     # we can't open it in write mode.
@@ -368,7 +365,7 @@ def dedup_tracked(sess, volset):
                 # there may still be race conditions at this point.
                 # Gets re-checked below (tell and fstat).
                 fd_inodes[afile.fileno()] = inode
-                fd_names[afile.fileno()] = paths[0]
+                fd_names[afile.fileno()] = path
                 files.append(afile)
                 fds.append(afile.fileno())
 

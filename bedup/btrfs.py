@@ -114,8 +114,10 @@ struct btrfs_ioctl_ino_lookup_args {
     uint64_t objectid;
 
     // pads to 4k; don't use this ioctl for path lookup, it's kind of broken.
+    // re-enabled, the alternative is buggy atm
     //char name[BTRFS_INO_LOOKUP_PATH_MAX];
-    ...;
+    char name[4080];
+    //...;
 };
 
 
@@ -333,6 +335,8 @@ def lookup_ino_paths(volume_fd, ino, alloc_extra=0):
     # This ioctl requires root
     args = ffi.new('struct btrfs_ioctl_ino_path_args*')
 
+    assert False, 'kernel bugs'
+
     assert alloc_extra >= 0
     # XXX We're getting some funky overflows here
     # inode-resolve -v 541144
@@ -408,6 +412,19 @@ def get_root_id(volume_fd):
     args.objectid = lib.BTRFS_FIRST_FREE_OBJECTID
     ioctl_pybug(volume_fd, lib.BTRFS_IOC_INO_LOOKUP, ffi.buffer(args))
     return args.treeid
+
+
+def lookup_ino_path_one(volume_fd, ino):
+    # Sort of sucks (only gets one backref),
+    # but that's sufficient for now; the other option
+    # has kernel bugs we can't work around.
+    args = ffi.new('struct btrfs_ioctl_ino_lookup_args *')
+    args.objectid = ino
+    ioctl_pybug(volume_fd, lib.BTRFS_IOC_INO_LOOKUP, ffi.buffer(args))
+    rv = ffi.string(args.name)
+    # For some reason the kernel puts a final /
+    assert rv[-1] == '/'
+    return rv[:-1]
 
 
 def volumes_from_root_tree(volume_fd):
