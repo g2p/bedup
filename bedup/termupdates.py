@@ -25,7 +25,15 @@ from .time import monotonic_time
 _formatter = string.Formatter()
 
 # Yay VT100
-CLEAR_LINE = '\r\x1b[K'
+LINE_START = '\r'
+CLEAR_END_OF_LINE = '\x1b[K'
+CLEAR_LINE = LINE_START + CLEAR_END_OF_LINE
+# XXX nowrap doesn't work well in gnome-term (libvte) with some non-ascii
+# characters that are twice as wide in a monospace font.
+# urxvt, aterm and xterm work fine.
+# xfce4-terminal works fine, and it is vte-based.
+# See: CJK double-width/bi-width
+# both xfce4 and gnome behave the same way for either value of VTE_CJK_WIDTH
 TTY_NOWRAP = '\x1b[?7l'
 TTY_DOWRAP = '\x1b[?7h'
 HIDE_CURSOR = '\x1b[?25l'
@@ -68,6 +76,7 @@ class TermTemplate(object):
         self._kws_totals = {}
         self._stream = sys.stdout
         self._isatty = self._stream.isatty()
+        self._wraps = True
 
     def update(self, **kwargs):
         self._kws.update(kwargs)
@@ -92,9 +101,20 @@ class TermTemplate(object):
         if self._isatty:
             self._stream.write(data)
 
+    def _nowrap(self):
+        # Don't forget to flush
+        if self._wraps:
+            self._write_tty(TTY_NOWRAP)
+
+    def _dowrap(self):
+        # Don't forget to flush
+        if not self._wraps:
+            self._write_tty(TTY_DOWRAP)
+
     def _render(self, with_newline):
         if (self._template is not None) and (self._isatty or with_newline):
-            self._write_tty(CLEAR_LINE + TTY_NOWRAP)
+            self._nowrap()
+            self._write_tty(CLEAR_LINE)
             for (
                 literal_text, field_name, format_spec, conversion
             ) in self._template:
@@ -128,9 +148,10 @@ class TermTemplate(object):
                             '%d' % self._kws_counter[field_name])
                     else:
                         assert False, format_spec
-            # Just in case we get an inopportune SIGKILL,
-            # write immediately and don't rely on finish: clauses.
-            self._write_tty(TTY_DOWRAP)
+            # Just in case we get an inopportune SIGKILL, reset this
+            # immediately (before the render flush) so we don't have to
+            # rely on finish: clauses or context managers.
+            self._dowrap()
             if with_newline:
                 self._stream.write('\n')
             else:
@@ -138,12 +159,14 @@ class TermTemplate(object):
 
     def notify(self, message):
         self._write_tty(CLEAR_LINE)
+        self._dowrap()
         self._stream.write(message + '\n')
         self._render(with_newline=False)
 
     def close(self):
         # Can be used with contextlib.closing
         self._render(with_newline=True)
+        self._dowrap()
         self._stream.flush()
         self._stream = None
 
