@@ -21,6 +21,7 @@
 import cffi
 import uuid
 
+from .compat import buffer_to_bytes
 from .fiemap import same_extents
 
 from os import getcwd  # XXX
@@ -403,7 +404,7 @@ def get_fsid(volume_fd):
     after = tuple(args.fsid)
     # Check for http://bugs.python.org/issue1520818
     assert after != before, (before, after)
-    return uuid.UUID(bytes=ffi.buffer(args.fsid).tobytes())
+    return uuid.UUID(bytes=buffer_to_bytes(ffi.buffer(args.fsid)))
 
 
 def get_root_id(volume_fd):

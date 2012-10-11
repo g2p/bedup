@@ -19,6 +19,7 @@
 from cffi import FFI
 import os
 
+from .compat import PY3
 
 ffi = FFI()
 ffi.cdef('''
@@ -37,7 +38,9 @@ def fopenat(fd, path):
     fd1 = lib.openat(fd, path, os.O_RDONLY)
     if fd1 < 0:
         raise IOError(ffi.errno, os.strerror(ffi.errno), fd, path)
-    return os.fdopen(fd1)
+    if PY3:
+        return os.fdopen(fd1, 'br')
+    return os.fdopen(fd1, 'r')
 
 
 def fopenat_rw(fd, path):
@@ -48,6 +51,7 @@ def fopenat_rw(fd, path):
     fd1 = lib.openat(fd, path, os.O_RDWR)
     if fd1 < 0:
         raise IOError(ffi.errno, os.strerror(ffi.errno), fd, path)
+    if PY3:
+        return os.fdopen(fd1, 'br+')
     return os.fdopen(fd1, 'r+')
-
 

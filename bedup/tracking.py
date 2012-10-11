@@ -257,7 +257,7 @@ def track_updated_files(sess, vol, tt):
 def dedup_tracked(sess, volset, tt):
     space_gain1 = space_gain2 = space_gain3 = 0
     vol_ids = [vol.id for vol in volset]
-    fs = vol.fs
+    fs = volset[0].fs
     assert all(vol.fs == fs for vol in volset)
 
     Commonality1, Commonality2, Commonality3 = comm_mappings(vol_ids)
