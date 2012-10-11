@@ -1,12 +1,22 @@
 #!/usr/bin/env python
 
 from setuptools import setup
+from sys import version_info
 
 import bedup.btrfs
 import bedup.chattr
 import bedup.fiemap
 import bedup.ioprio
 import bedup.openat
+
+install_requires = [
+    #'cffi >= 0.4',  # 0.4 is not released and confuses pip
+    'pyxdg',
+    'sqlalchemy',
+]
+
+if version_info < (2, 7):
+    install_requires.append('argparse')
 
 setup(
     name='bedup',
@@ -17,12 +27,7 @@ setup(
     license='GNU GPL',
     keywords='btrfs deduplication dedup',
     description='Deduplication for Btrfs filesystems',
-    install_requires=[
-        'argparse',  # only required for Python 2.6
-        #'cffi >= 0.4',  # 0.4 is not released and confuses pip
-        'pyxdg',
-        'sqlalchemy',
-    ],
+    install_requires=install_requires,
     entry_points={
         'console_scripts': [
             'bedup = bedup.__main__:main']},
