@@ -25,8 +25,8 @@ import os
 import re
 import stat
 
-from btrfs import clone_data, defragment as btrfs_defragment
-from chattr import editflags, FS_IMMUTABLE_FL
+from .btrfs import clone_data, defragment as btrfs_defragment
+from .chattr import editflags, FS_IMMUTABLE_FL
 
 
 BUFSIZE = 8192
