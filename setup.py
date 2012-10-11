@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-from distutils.core import setup
+from setuptools import setup
 
 import bedup.btrfs
 import bedup.chattr
@@ -23,6 +23,9 @@ setup(
         'pyxdg',
         'sqlalchemy',
     ],
+    entry_points={
+        'console_scripts': [
+            'bedup = bedup.__main__:main']},
     ext_modules=[
         bedup.btrfs.ffi.verifier.get_extension(),
         bedup.chattr.ffi.verifier.get_extension(),
@@ -34,6 +37,8 @@ setup(
     packages=[
         'bedup',
     ],
+    use_2to3=True,
+    zip_safe=False,  # cargo-culted from the CFFI docs
     classifiers='''
         Programming Language :: Python :: 2
         Programming Language :: Python :: Implementation :: CPython
@@ -44,6 +49,5 @@ setup(
         Topic :: Utilities
         Environment :: Console
     '''.strip().splitlines(),
-
 )
 
