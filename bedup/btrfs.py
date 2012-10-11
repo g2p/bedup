@@ -403,7 +403,7 @@ def get_fsid(volume_fd):
     after = tuple(args.fsid)
     # Check for http://bugs.python.org/issue1520818
     assert after != before, (before, after)
-    return uuid.UUID(bytes=ffi.buffer(args.fsid))
+    return uuid.UUID(bytes=ffi.buffer(args.fsid).tobytes())
 
 
 def get_root_id(volume_fd):
@@ -423,7 +423,7 @@ def lookup_ino_path_one(volume_fd, ino):
     ioctl_pybug(volume_fd, lib.BTRFS_IOC_INO_LOOKUP, ffi.buffer(args))
     rv = ffi.string(args.name)
     # For some reason the kernel puts a final /
-    assert rv[-1] == '/'
+    assert rv[-1:] == b'/', rv
     return rv[:-1]
 
 
