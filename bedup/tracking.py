@@ -371,6 +371,7 @@ def dedup_tracked(sess, volset, tt):
                     if afd in immutability.fds_in_write_use:
                         aname = fd_names[afd]
                         tt.notify('File %r is in use, skipping' % aname)
+                        # TODO: prevent has_updates from being cleared
                         continue
                     hasher = hashlib.sha1()
                     for buf in iter(lambda: afile.read(BUFSIZE), ''):
