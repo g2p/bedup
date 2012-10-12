@@ -29,23 +29,24 @@ def setup():
     os.close(fs_fd)
 
 
-def boxed_call(argv):
+def boxed_call(*argv):
     # We need multiprocessing rather than fork(), because the
     # former has hooks for nose-cov, pytest-cov & friends.
     # Also fork + sys.exit breaks pytest, os._exit was required.
-    proc = multiprocessing.Process(target=main, args=(['__main__'] + argv,))
+    proc = multiprocessing.Process(target=main, args=(('__main__',) + argv,))
     proc.start()
     proc.join()
     assert proc.exitcode == 0
 
 
 def test_functional():
-    boxed_call('scan-vol -- '.split() + [fs])
-    boxed_call('dedup-vol -- '.split() + [fs])
-    boxed_call('forget-vol -- '.split() + [fs])
-    boxed_call('scan-vol -- '.split() + [fs])
-    boxed_call('dedup-vol -- '.split() + [fs])
-    boxed_call('find-new -- '.split() + [fs])
+    boxed_call('scan-vol', '--', fs)
+    boxed_call('dedup-vol', '--', fs)
+    boxed_call('forget-vol', '--', fs)
+    boxed_call('scan-vol', '--', fs)
+    boxed_call('dedup-vol', '--', fs)
+    boxed_call('find-new', '--', fs)
+    boxed_call('show-vols')
 
 
 def teardown():
