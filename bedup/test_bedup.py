@@ -32,28 +32,44 @@ def setup():
     syncfs(vol_fd)
 
 
-def boxed_call(*argv):
+def subp_main(conn, argv):
+    rv = main(argv)
+    conn.send(rv)
+
+
+def boxed_call(argv, expected_rv=None):
     # We need multiprocessing rather than fork(), because the
     # former has hooks for nose-cov, pytest-cov & friends.
     # Also fork + sys.exit breaks pytest, os._exit was required.
-    proc = multiprocessing.Process(target=main, args=(('__main__',) + argv,))
+    # Also also, multiprocessing won't let us use sys.exit either
+    # (it captures the exception and changes the exit status).
+    # We have to use IPC instead.
+    parent_conn, child_conn = multiprocessing.Pipe()
+    proc = multiprocessing.Process(
+        target=subp_main, args=(child_conn, ('__main__',) + tuple(argv),))
     proc.start()
+    rv = parent_conn.recv()
     proc.join()
-    assert proc.exitcode == 0
+    assert rv == expected_rv
 
 
 def test_functional():
-    boxed_call('scan-vol', '--', fs)
-    boxed_call('dedup-vol', '--', fs)
-    boxed_call('forget-vol', '--', fs)
-    boxed_call('scan-vol', '--size-cutoff=65536', '--', fs, fs)
-    with open(os.path.join(fs, 'one.sample'), 'r+') as busy_file:
-        boxed_call('dedup-vol', '--', fs)
+    boxed_call('scan-vol --'.split() + [fs])
+    boxed_call('dedup-vol --'.split() + [fs])
+    boxed_call('forget-vol --'.split() + [fs])
+    boxed_call('scan-vol --size-cutoff=65536 --'.split() + [fs, fs])
+    with open(fs + '/one.sample', 'r+') as busy_file:
+        boxed_call('dedup-vol --'.split() + [fs])
     boxed_call(
-        'dedup-files', '--defragment', '--',
-        fs + '/one.sample', fs + '/two.sample')
-    boxed_call('find-new', '--', fs)
-    boxed_call('show-vols')
+        'dedup-files --defragment --'.split() +
+        [fs + '/one.sample', fs + '/two.sample'])
+    with open(fs + '/one.sample', 'r+') as busy_file:
+        boxed_call(
+            'dedup-files --defragment --'.split() +
+                [fs + '/one.sample', fs + '/two.sample'],
+            expected_rv=1)
+    boxed_call('find-new --'.split() + [fs])
+    boxed_call('show-vols'.split())
 
 
 @pytest.mark.xfail
@@ -61,7 +77,8 @@ def test_lookup_ino_paths():
     # yeah, crasher. shouldn't happen on those examples though.
     ino = os.stat(os.path.join(fs, 'one.sample')).st_ino
     assert tuple(lookup_ino_paths(vol_fd, ino)) == ('one.sample', )
-    assert tuple(lookup_ino_paths(vol_fd, BTRFS_FIRST_FREE_OBJECTID)) == ('/', )
+    assert tuple(
+        lookup_ino_paths(vol_fd, BTRFS_FIRST_FREE_OBJECTID)) == ('/', )
 
 
 def teardown():
