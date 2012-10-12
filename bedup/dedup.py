@@ -37,7 +37,11 @@ class FilesDifferError(ValueError):
 
 
 class FilesInUseError(RuntimeError):
-    pass
+    def describe(self, ofile):
+        for (fi, users) in self.args[1].iteritems():
+            ofile.write('File %s is in use\n' % fi)
+            for use_info in users:
+                ofile.write('  used as %r\n' % (use_info,))
 
 
 ProcUseInfo = collections.namedtuple(

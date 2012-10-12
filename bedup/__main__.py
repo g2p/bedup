@@ -29,7 +29,7 @@ from contextlib import closing
 from sqlalchemy.orm import sessionmaker
 
 from .btrfs import find_new
-from .dedup import dedup_same
+from .dedup import dedup_same, FilesInUseError
 from .ioprio import set_idle_priority
 from .model import META
 from .termupdates import TermTemplate
@@ -41,7 +41,11 @@ APP_NAME = 'bedup'
 
 
 def cmd_dedup_files(args):
-    return dedup_same(args.source, args.dests, args.defragment)
+    try:
+        return dedup_same(args.source, args.dests, args.defragment)
+    except FilesInUseError, exn:
+        exn.describe(sys.stderr)
+        return 1
 
 
 def cmd_find_new(args):
