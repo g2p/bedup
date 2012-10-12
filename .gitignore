@@ -4,3 +4,4 @@
 /dist/
 /bedup/__pycache__/
 /bedup.egg-info/
+/.coverage
