@@ -34,9 +34,10 @@ if not hasattr(subprocess, 'check_output'):
     # Monkey-patching. That way lies madness.
 
     def _check_output(*popenargs, **kwargs):
-        """Run command with arguments and return its output as a byte string."""
+        """Run command with arguments and return its output as a byte string"""
 
-        process = subprocess.Popen(stdout=subprocess.PIPE, *popenargs, **kwargs)
+        process = subprocess.Popen(
+            stdout=subprocess.PIPE, *popenargs, **kwargs)
         output, unused_err = process.communicate()
         retcode = process.poll()
         if retcode:
