@@ -3,8 +3,7 @@ Deduplication for Btrfs.
 
 # Requirements
 
-You need Python 2.7 (recommended), Python 2.6, or PyPy.
-Python 3 isn't currently supported due to CFFI incompatibilities.
+You need Python 2.7 (recommended), Python 2.6, Python 3.2, or PyPy.
 You need Linux 3.3 or newer.
 
 This should get you started on Debian/Ubuntu:
@@ -43,6 +42,7 @@ You'll see a list of supported commands.
 * **scan-vol** scans a subvolume to keep track of potentially duplicated files.
 * **dedup-vol** runs scan-vol, then deduplicates identical files.
 * **dedup-files** takes a list of identical files and deduplicates them.
+* **show-vols** shows all known btrfs filesystems and their tracking status.
 * **find-new** is a reimplementation of the `btrfs find-new` command.
 
 To deduplicate a mounted btrfs volume:
