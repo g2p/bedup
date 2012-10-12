@@ -319,18 +319,21 @@ def name_of_dir_item(item):
     return ffi.string(ffi.cast('char*', item + 1), namelen)
 
 
-def ioctl_pybug(fd, ioc, buf):
+def ioctl_pybug(fd, ioc, arg=0):
     # Private import
     import fcntl
+
+    if isinstance(arg, int):
+        return fcntl.ioctl(fd, ioc, arg)
 
     # Check for http://bugs.python.org/issue1520818
     # Also known as http://bugs.python.org/issue9758
     # Fixed in 2.7.1, 3.1.3, and 3.2, not backported to 2.6
     # which is now in maintenance mode.
-    if len(buf) == 1024:
-        raise ValueError
-    return fcntl.ioctl(fd, ioc, buf, True)
+    if len(arg) == 1024:
+        raise ValueError(arg)
 
+    return fcntl.ioctl(fd, ioc, arg, True)
 
 def lookup_ino_paths(volume_fd, ino, alloc_extra=0):
     # This ioctl requires root
@@ -511,10 +514,9 @@ def get_root_generation(volume_fd):
 
 # clone_data and defragment also have _RANGE variants
 def clone_data(dest, src, check_first):
-    from fcntl import ioctl
     if check_first and same_extents(dest, src):
         return False
-    ioctl(dest, lib.BTRFS_IOC_CLONE, src)
+    ioctl_pybug(dest, lib.BTRFS_IOC_CLONE, src)
     return True
 
 
