@@ -46,8 +46,12 @@ def test_functional():
     boxed_call('scan-vol', '--', fs)
     boxed_call('dedup-vol', '--', fs)
     boxed_call('forget-vol', '--', fs)
-    boxed_call('scan-vol', '--', fs)
-    boxed_call('dedup-vol', '--', fs)
+    boxed_call('scan-vol', '--size-cutoff=65536', '--', fs, fs)
+    with open(os.path.join(fs, 'one.sample'), 'r+') as busy_file:
+        boxed_call('dedup-vol', '--', fs)
+    boxed_call(
+        'dedup-files', '--defragment', '--',
+        fs + '/one.sample', fs + '/two.sample')
     boxed_call('find-new', '--', fs)
     boxed_call('show-vols')
 
