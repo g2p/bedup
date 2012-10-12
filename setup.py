@@ -30,7 +30,7 @@ setup(
     install_requires=install_requires,
     entry_points={
         'console_scripts': [
-            'bedup = bedup.__main__:main']},
+            'bedup = bedup.__main__:script_main']},
     ext_modules=[
         bedup.btrfs.ffi.verifier.get_extension(),
         bedup.chattr.ffi.verifier.get_extension(),

@@ -168,9 +168,13 @@ modified to include directories as well.""")
         help='only show items modified at generation or a newer transaction')
 
     args = parser.parse_args()
-    sys.exit(args.action(args))
+    return args.action(args)
+
+
+def script_main():
+    sys.exit(main())
 
 
 if __name__ == '__main__':
-    main()
+    script_main()
 
