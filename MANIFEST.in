@@ -9,3 +9,8 @@ include btrfs-progs/extent-cache.h
 include btrfs-progs/rbtree.h
 include btrfs-progs/extent_io.h
 
+include COPYING
+include README.md
+
+include tox.ini
+
