@@ -64,8 +64,8 @@ def proc_use_info(proc_path):
 
 def cmp_fds(fd1, fd2):
     # Python 3 can take closefd=False instead of a duplicated fd.
-    fi1 = os.fdopen(os.dup(fd1), 'r')
-    fi2 = os.fdopen(os.dup(fd2), 'r')
+    fi1 = os.fdopen(os.dup(fd1), 'rb')
+    fi2 = os.fdopen(os.dup(fd2), 'rb')
     return cmp_files(fi1, fi2)
 
 

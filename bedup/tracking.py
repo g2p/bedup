@@ -41,6 +41,8 @@ from .model import (
 
 BUFSIZE = 8192
 
+FS_ENCODING = sys.getfilesystemencoding()
+
 # 32MiB, initial scan takes about 12', might gain 15837689948,
 # sqlite takes 256k
 DEFAULT_SIZE_CUTOFF = 32 * 1024 ** 2
@@ -89,8 +91,8 @@ def forget_vol(sess, vol):
 
 
 BLKID_RE = re.compile(
-    '^(?P<dev>/dev/[^:]*): '
-    'LABEL="(?P<label>[^"]*)" UUID="(?P<uuid>[^"]*)"\s*$')
+    br'^(?P<dev>/dev/[^:]*): '
+    br'LABEL="(?P<label>[^"]*)" UUID="(?P<uuid>[^"]*)"\s*$')
 
 
 def show_vols(sess):
@@ -218,7 +220,8 @@ def track_updated_files(sess, vol, tt):
                 # XXX Should I use inner or outer gen in these checks?
                 # Inner gen seems to miss updates (due to delalloc?),
                 # whereas outer gen has too many spurious updates.
-                if size >= vol.last_tracked_size_cutoff:
+                if (vol.last_tracked_size_cutoff
+                    and size >= vol.last_tracked_size_cutoff):
                     if inode_gen <= vol.last_tracked_generation:
                         continue
                 else:
@@ -243,7 +246,7 @@ def track_updated_files(sess, vol, tt):
                         sess.delete(inode)
                     continue
 
-                tt.update(path=path)
+                tt.update(path=path.decode(FS_ENCODING))
                 tt.update(
                     desc='(ino %d outer gen %d inner gen %d size %d)' % (
                         ino, sh.transid, inode_gen, size))
@@ -377,7 +380,7 @@ def dedup_tracked(sess, volset, tt):
                         # TODO: prevent has_updates from being cleared
                         continue
                     hasher = hashlib.sha1()
-                    for buf in iter(lambda: afile.read(BUFSIZE), ''):
+                    for buf in iter(lambda: afile.read(BUFSIZE), b''):
                         hasher.update(buf)
 
                     # Mostly for the sake of correct logging, might also
