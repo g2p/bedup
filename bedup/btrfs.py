@@ -432,7 +432,7 @@ def lookup_ino_path_one(volume_fd, ino):
     return rv[:-1]
 
 
-def volumes_from_root_tree(volume_fd):
+def volumes_from_root_tree(volume_fd):  # pragma: nocover
     # Requires a scary amount of scanning, not just the root tree,
     # needs to be combined with some inode resolution on mounted volumes
     raise NotImplementedError
