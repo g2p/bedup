@@ -37,8 +37,10 @@ def boxed_call(argv):
 
 def test_functional():
     boxed_call('scan-vol -- '.split() + [fs])
+    boxed_call('dedup-vol -- '.split() + [fs])
     boxed_call('forget-vol -- '.split() + [fs])
     boxed_call('scan-vol -- '.split() + [fs])
+    boxed_call('dedup-vol -- '.split() + [fs])
 
 
 def teardown():
