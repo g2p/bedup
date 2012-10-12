@@ -104,18 +104,21 @@ def show_vols(sess):
                 continue
             volpath = items[3]
             mpoint = items[4]
-            dev = items[idx + 2]
+            dev = os.path.realpath(items[idx + 2])
             mpoints_by_dev[dev].append((volpath, mpoint))
 
     for line in subprocess.check_output(
         'blkid -s LABEL -s UUID -t TYPE=btrfs'.split()
     ).splitlines():
         dev, label, uuid = BLKID_RE.match(line).groups()
+        # Tends to be a less descriptive name, so keep the original
+        # name blkid gave for printing.
+        dev_canonical = os.path.realpath(dev)
         sys.stdout.write('%s\n  Label: %s UUID: %s\n' % (dev, label, uuid))
         fs = sess.query(Filesystem).filter_by(uuid=uuid).scalar()
         if fs is not None:
             mpoint_by_root_id = collections.defaultdict(list)
-            for (volpath, mpoint) in mpoints_by_dev[dev]:
+            for (volpath, mpoint) in mpoints_by_dev[dev_canonical]:
                 mpoint_fd = os.open(mpoint, os.O_DIRECTORY)
                 st = os.fstat(mpoint_fd)
                 if st.st_ino != BTRFS_FIRST_FREE_OBJECTID:
