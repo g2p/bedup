@@ -43,7 +43,7 @@ APP_NAME = 'bedup'
 def cmd_dedup_files(args):
     try:
         return dedup_same(args.source, args.dests, args.defragment)
-    except FilesInUseError, exn:
+    except FilesInUseError as exn:
         exn.describe(sys.stderr)
         return 1
 
