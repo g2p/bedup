@@ -55,11 +55,11 @@ def boxed_call(argv, expected_rv=None):
 
 def test_functional():
     boxed_call('scan-vol --'.split() + [fs])
-    boxed_call('dedup-vol --'.split() + [fs])
-    boxed_call('forget-vol --'.split() + [fs])
-    boxed_call('scan-vol --size-cutoff=65536 --'.split() + [fs, fs])
     with open(fs + '/one.sample', 'r+') as busy_file:
         boxed_call('dedup-vol --'.split() + [fs])
+    boxed_call('forget-vol --'.split() + [fs])
+    boxed_call('scan-vol --size-cutoff=65536 --'.split() + [fs, fs])
+    boxed_call('dedup-vol --'.split() + [fs])
     boxed_call(
         'dedup-files --defragment --'.split() +
         [fs + '/one.sample', fs + '/two.sample'])
