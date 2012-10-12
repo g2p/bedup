@@ -92,7 +92,8 @@ def test_lookup_ino_paths():
 
 
 def teardown():
-    os.close(vol_fd)
+    if vol_fd is not None:
+        os.close(vol_fd)
     try:
         subprocess.check_call('umount --'.split() + [fsimage])
     except subprocess.CalledProcessError:
