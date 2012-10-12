@@ -16,6 +16,7 @@
 # You should have received a copy of the GNU General Public License
 # along with bedup.  If not, see <http://www.gnu.org/licenses/>.
 
+import subprocess
 import sys
 
 
@@ -27,4 +28,24 @@ if PY3:
 else:
     def buffer_to_bytes(buf):
         return buf[:]
+
+
+if not hasattr(subprocess, 'check_output'):
+    # Monkey-patching. That way lies madness.
+
+    def _check_output(*popenargs, **kwargs):
+        """Run command with arguments and return its output as a byte string."""
+
+        process = subprocess.Popen(stdout=subprocess.PIPE, *popenargs, **kwargs)
+        output, unused_err = process.communicate()
+        retcode = process.poll()
+        if retcode:
+            cmd = kwargs.get("args")
+            if cmd is None:
+                cmd = popenargs[0]
+            error = subprocess.CalledProcessError(retcode, cmd)
+            error.output = output
+            raise error
+        return output
+    subprocess.check_output = _check_output
 
