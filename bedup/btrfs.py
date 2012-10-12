@@ -392,7 +392,7 @@ def lookup_ino_paths(volume_fd, ino, alloc_extra=0):  # pragma: no cover
 
 
 def get_fsid(volume_fd):
-    if False:
+    if False:  # pragma: nocover
         args = ffi.new('struct btrfs_ioctl_fs_info_args *')
         args_buf = ffi.buffer(args)
     else:

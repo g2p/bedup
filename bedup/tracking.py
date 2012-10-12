@@ -128,7 +128,7 @@ def show_vols(sess):
                 try:
                     mpoint_by_root_id[get_root_id(mpoint_fd)].append(
                         (volpath, mpoint))
-                    if False:
+                    if False:  # pragma: nocover
                         volumes_from_root_tree(mpoint_fd)
                 except IOError as e:
                     if e.errno == errno.EPERM:
