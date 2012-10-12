@@ -18,9 +18,8 @@
 
 # A workaround for Python2.6
 
-import sys
-from .__main__ import main
+from .__main__ import script_main
 
 if __name__ == '__main__':
-    sys.exit(main())
+    script_main()
 

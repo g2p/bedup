@@ -115,7 +115,7 @@ def vol_flags(parser):
         'Lowering the cutoff will trigger a partial rescan of older files.')
 
 
-def main():
+def main(argv):
     parser = argparse.ArgumentParser(prog='python -m bedup')
     commands = parser.add_subparsers(dest='command')
 
@@ -167,12 +167,12 @@ modified to include directories as well.""")
         'generation', type=int, nargs='?', default=0,
         help='only show items modified at generation or a newer transaction')
 
-    args = parser.parse_args()
+    args = parser.parse_args(argv[1:])
     return args.action(args)
 
 
 def script_main():
-    sys.exit(main())
+    sys.exit(main(sys.argv))
 
 
 if __name__ == '__main__':
