@@ -6,6 +6,7 @@ import subprocess
 import tempfile
 
 from .__main__ import main
+from .syncfs import syncfs
 
 fs = fsimage = sampledata = None
 
@@ -23,6 +24,9 @@ def setup():
     subprocess.check_call('mount -o loop --'.split() + [fsimage, fs])
     shutil.copy(sampledata, os.path.join(fs, 'one.sample'))
     shutil.copy(sampledata, os.path.join(fs, 'two.sample'))
+    fs_fd = os.open(fs, os.O_DIRECTORY)
+    syncfs(fs_fd)
+    os.close(fs_fd)
 
 
 def boxed_call(argv):
@@ -41,6 +45,7 @@ def test_functional():
     boxed_call('forget-vol -- '.split() + [fs])
     boxed_call('scan-vol -- '.split() + [fs])
     boxed_call('dedup-vol -- '.split() + [fs])
+    boxed_call('find-new -- '.split() + [fs])
 
 
 def teardown():
