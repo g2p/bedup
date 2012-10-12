@@ -15,7 +15,7 @@ from .btrfs import lookup_ino_paths, BTRFS_FIRST_FREE_OBJECTID
 fs = fsimage = sampledata = vol_fd = None
 
 
-def setup():
+def setup_module():
     global fsimage, fs, sampledata, vol_fd
     fsimage_fd, fsimage = tempfile.mkstemp(suffix='.btrfs')
     sampledata_fd, sampledata = tempfile.mkstemp(suffix='.sample')
@@ -91,7 +91,7 @@ def test_lookup_ino_paths():
         lookup_ino_paths(vol_fd, BTRFS_FIRST_FREE_OBJECTID)) == ('/', )
 
 
-def teardown():
+def teardown_module():
     if vol_fd is not None:
         os.close(vol_fd)
     try:
