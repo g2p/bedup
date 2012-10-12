@@ -335,11 +335,12 @@ def ioctl_pybug(fd, ioc, arg=0):
 
     return fcntl.ioctl(fd, ioc, arg, True)
 
-def lookup_ino_paths(volume_fd, ino, alloc_extra=0):
+
+def lookup_ino_paths(volume_fd, ino, alloc_extra=0):  # pragma: no cover
+    raise OSError('kernel bugs')
+
     # This ioctl requires root
     args = ffi.new('struct btrfs_ioctl_ino_path_args*')
-
-    raise OSError('kernel bugs')
 
     assert alloc_extra >= 0
     # XXX We're getting some funky overflows here
