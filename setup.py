@@ -8,6 +8,7 @@ import bedup.chattr
 import bedup.fiemap
 import bedup.ioprio
 import bedup.openat
+import bedup.syncfs
 
 install_requires = [
     #'cffi >= 0.4',  # 0.4 is not released and confuses pip
@@ -37,6 +38,7 @@ setup(
         bedup.fiemap.ffi.verifier.get_extension(),
         bedup.ioprio.ffi.verifier.get_extension(),
         bedup.openat.ffi.verifier.get_extension(),
+        bedup.syncfs.ffi.verifier.get_extension(),
     ],
     ext_package='bedup',
     packages=[
