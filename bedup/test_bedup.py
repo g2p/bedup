@@ -5,14 +5,18 @@ import shutil
 import subprocess
 import tempfile
 
+import pytest
+
 from .__main__ import main
 from .syncfs import syncfs
+from .btrfs import lookup_ino_paths, BTRFS_FIRST_FREE_OBJECTID
 
-fs = fsimage = sampledata = None
+# Placate pyflakes
+fs = fsimage = sampledata = vol_fd = None
 
 
 def setup():
-    global fsimage, fs, sampledata
+    global fsimage, fs, sampledata, vol_fd
     fsimage_fd, fsimage = tempfile.mkstemp(suffix='.btrfs')
     sampledata_fd, sampledata = tempfile.mkstemp(suffix='.sample')
     fs = tempfile.mkdtemp(suffix='.mnt')
@@ -24,9 +28,8 @@ def setup():
     subprocess.check_call('mount -o loop --'.split() + [fsimage, fs])
     shutil.copy(sampledata, os.path.join(fs, 'one.sample'))
     shutil.copy(sampledata, os.path.join(fs, 'two.sample'))
-    fs_fd = os.open(fs, os.O_DIRECTORY)
-    syncfs(fs_fd)
-    os.close(fs_fd)
+    vol_fd = os.open(fs, os.O_DIRECTORY)
+    syncfs(vol_fd)
 
 
 def boxed_call(*argv):
@@ -49,7 +52,16 @@ def test_functional():
     boxed_call('show-vols')
 
 
+@pytest.mark.xfail
+def test_lookup_ino_paths():
+    # yeah, crasher. shouldn't happen on those examples though.
+    ino = os.stat(os.path.join(fs, 'one.sample')).st_ino
+    assert tuple(lookup_ino_paths(vol_fd, ino)) == ('one.sample', )
+    assert tuple(lookup_ino_paths(vol_fd, BTRFS_FIRST_FREE_OBJECTID)) == ('/', )
+
+
 def teardown():
+    os.close(vol_fd)
     try:
         subprocess.check_call('umount --'.split() + [fsimage])
     except subprocess.CalledProcessError:
