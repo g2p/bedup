@@ -92,7 +92,7 @@ def forget_vol(sess, vol):
 
 BLKID_RE = re.compile(
     br'^(?P<dev>/dev/[^:]*): '
-    br'LABEL="(?P<label>[^"]*)" UUID="(?P<uuid>[^"]*)"\s*$')
+    br'(?:LABEL="(?P<label>[^"]*)" )?UUID="(?P<uuid>[^"]*)"\s*$')
 
 
 def show_vols(sess):
