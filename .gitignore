@@ -1,7 +1,8 @@
-/.tox/
 *.py[oc]
-/MANIFEST
-/dist/
-/bedup/__pycache__/
-/bedup.egg-info/
 /.coverage
+/.tox/
+/MANIFEST
+/bedup.egg-info/
+/bedup/__pycache__/
+/build/
+/dist/
