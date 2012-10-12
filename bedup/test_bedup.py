@@ -33,8 +33,16 @@ def setup():
 
 
 def subp_main(conn, argv):
-    rv = main(argv)
-    conn.send(rv)
+    try:
+        rv = main(argv)
+    except Exception as exn:
+        conn.send(exn)
+        raise
+    except:
+        conn.send('I don\'t even')
+        raise
+    else:
+        conn.send(rv)
 
 
 def boxed_call(argv, expected_rv=None):
@@ -50,6 +58,8 @@ def boxed_call(argv, expected_rv=None):
     proc.start()
     rv = parent_conn.recv()
     proc.join()
+    if isinstance(rv, Exception):
+        raise rv
     assert rv == expected_rv
 
 
