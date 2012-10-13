@@ -177,8 +177,8 @@ class DedupEventInode(Base):
             sqlite_autoincrement=True))
 
 DedupEvent.inode_count = column_property(
-    select([func.count(DedupEventInode)])
-    .where(DedupEventInode.vol_id == Volume.id)
+    select([func.count(DedupEventInode.id)])
+    .where(DedupEventInode.event_id == DedupEvent.id)
     .label('inode_count'))
 
 
