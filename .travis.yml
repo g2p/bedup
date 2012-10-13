@@ -1,0 +1,10 @@
+language: python
+
+install:
+- sudo aptitude install libffi-dev btrfs-tools
+- pip install --use-mirrors https://bitbucket.org/cffi/cffi/get/default.tar.gz
+- pip install --use-mirrors tox
+- git submodule update --init
+
+script: tox
+
