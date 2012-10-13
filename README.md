@@ -1,6 +1,8 @@
 
 Deduplication for Btrfs.
 
+[![Build status with Travis](https://secure.travis-ci.org/g2p/bedup.png)](http://travis-ci.org/g2p/bedup)
+
 # Requirements
 
 You need Python 2.7 (recommended), Python 2.6, Python 3.2, or PyPy.
