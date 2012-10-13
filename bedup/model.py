@@ -145,6 +145,12 @@ class Inode(Base):
         return 'Inode(ino=%d, volume=%d)' % (self.ino, self.vol_id)
 
 
+Volume.inode_count = column_property(
+    select([func.count(Inode.ino)])
+    .where(Inode.vol_id == Volume.id)
+    .label('inode_count'))
+
+
 # The logging classes don't have anything in common (no FKs)
 # with the tracking classes. For example, inode numbers may
 # be reused, and inodes can be removed from tracking in these

@@ -122,6 +122,9 @@ def show_fs(fs, mpoints_by_root_id, initial_indent, indent):
             initial_indent + 'Volume %d last tracked generation %d size cutoff %d\n'
             % (vol.root_id, vol.last_tracked_generation,
                vol.size_cutoff))
+        sys.stdout.write(
+            initial_indent + indent +
+            '%d inodes tracked\n' % (vol.inode_count, ))
 
         if vol.root_id in mpoints_by_root_id:
             for (volpath, mpoint) in mpoints_by_root_id[vol.root_id]:
