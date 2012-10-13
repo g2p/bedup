@@ -68,9 +68,10 @@ def sql_setup(dbapi_con, con_record):
 
 
 def get_session(args):
-    data_dir = xdg.BaseDirectory.save_data_path(APP_NAME)
-    url = sqlalchemy.engine.url.URL(
-        'sqlite', database=os.path.join(data_dir, 'db.sqlite'))
+    if args.db_path is None:
+        data_dir = xdg.BaseDirectory.save_data_path(APP_NAME)
+        args.db_path = os.path.join(data_dir, 'db.sqlite')
+    url = sqlalchemy.engine.url.URL('sqlite', database=args.db_path)
     engine = sqlalchemy.engine.create_engine(url, echo=args.verbose_sql)
     sqlalchemy.event.listen(engine, 'connect', sql_setup)
     Session = sessionmaker(bind=engine)
@@ -104,6 +105,9 @@ def vol_cmd(args):
 
 
 def sql_flags(parser):
+    parser.add_argument(
+        '--db-path', dest='db_path',
+        help='Override the location of the sqlite database')
     parser.add_argument(
         '--verbose-sql', action='store_true', dest='verbose_sql',
         help='print SQL statements being executed')

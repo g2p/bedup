@@ -12,11 +12,12 @@ from .syncfs import syncfs
 from .btrfs import lookup_ino_paths, BTRFS_FIRST_FREE_OBJECTID
 
 # Placate pyflakes
-fs = fsimage = sampledata = vol_fd = None
+db = fs = fsimage = sampledata = vol_fd = None
 
 
 def setup_module():
-    global fsimage, fs, sampledata, vol_fd
+    global db, fs, fsimage, sampledata, vol_fd
+    db_fd, db = tempfile.mkstemp(suffix='.sqlite')
     fsimage_fd, fsimage = tempfile.mkstemp(suffix='.btrfs')
     sampledata_fd, sampledata = tempfile.mkstemp(suffix='.sample')
     fs = tempfile.mkdtemp(suffix='.mnt')
@@ -53,8 +54,11 @@ def boxed_call(argv, expected_rv=None):
     # (it captures the exception and changes the exit status).
     # We have to use IPC instead.
     parent_conn, child_conn = multiprocessing.Pipe()
-    proc = multiprocessing.Process(
-        target=subp_main, args=(child_conn, ('__main__',) + tuple(argv),))
+    argv = list(argv)
+    if argv[0] not in 'dedup-files find-new'.split():
+        argv[1:1] = ['--db-path', db]
+    argv[0:0] = ['__main__']
+    proc = multiprocessing.Process(target=subp_main, args=(child_conn, argv))
     proc.start()
     rv = parent_conn.recv()
     proc.join()
