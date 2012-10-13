@@ -3,6 +3,7 @@ language: python
 install:
 - uname -a
 - lsb_release -a
+- ls /proc/self/map_files
 - sudo aptitude -y install libffi-dev btrfs-tools
 - pip install --use-mirrors tox https://bitbucket.org/cffi/cffi/get/default.tar.gz
 
