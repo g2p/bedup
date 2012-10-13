@@ -30,7 +30,7 @@ import sys
 from .btrfs import (
     lookup_ino_path_one, get_fsid, get_root_id,
     get_root_generation, clone_data, defragment,
-    volumes_from_root_tree, BTRFS_FIRST_FREE_OBJECTID)
+    BTRFS_FIRST_FREE_OBJECTID)
 from .datetime import system_now
 from .dedup import ImmutableFDs, cmp_files
 from .openat import fopenat, fopenat_rw
@@ -119,7 +119,8 @@ def is_subvolume(btrfs_mountpoint_fd):
 def show_fs(fs, mpoints_by_root_id, initial_indent, indent):
     for vol in fs.volumes:
         sys.stdout.write(
-            initial_indent + 'Volume %d last tracked generation %d size cutoff %d\n'
+            initial_indent +
+            'Volume %d last tracked generation %d size cutoff %d\n'
             % (vol.root_id, vol.last_tracked_generation,
                vol.size_cutoff))
         sys.stdout.write(
@@ -279,7 +280,7 @@ def track_updated_files(sess, vol, tt):
                     continue
 
                 try:
-                    path=path.decode(FS_ENCODING)
+                    path = path.decode(FS_ENCODING)
                 except ValueError:
                     continue
                 tt.update(path=path)
