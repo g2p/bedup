@@ -95,7 +95,7 @@ BLKID_RE = re.compile(
     br'(?:LABEL="(?P<label>[^"]*)" )?UUID="(?P<uuid>[^"]*)"\s*$')
 
 
-def show_vols(sess):
+def parse_btrfs_mountinfo():
     mpoints_by_dev = collections.defaultdict(list)
     with open('/proc/self/mountinfo') as mounts:
         for line in mounts:
@@ -108,49 +108,75 @@ def show_vols(sess):
             mpoint = items[4]
             dev = os.path.realpath(items[idx + 2])
             mpoints_by_dev[dev].append((volpath, mpoint))
+    return mpoints_by_dev
 
+
+def is_subvolume(btrfs_mountpoint_fd):
+    st = os.fstat(btrfs_mountpoint_fd)
+    return st.st_ino == BTRFS_FIRST_FREE_OBJECTID
+
+
+def show_fs(fs, mpoints_by_root_id, initial_indent, indent):
+    for vol in fs.volumes:
+        sys.stdout.write(
+            initial_indent + 'Volume %d last tracked generation %d size cutoff %d\n'
+            % (vol.root_id, vol.last_tracked_generation,
+               vol.size_cutoff))
+
+        if vol.root_id in mpoints_by_root_id:
+            for (volpath, mpoint) in mpoints_by_root_id[vol.root_id]:
+                sys.stdout.write(
+                    initial_indent + indent + 'Mounted on %s\n' % mpoint)
+            # volpath should be the same for all mpoints
+            sys.stdout.write(initial_indent + indent + 'Path %s\n' % volpath)
+
+
+def show_vols(sess):
+    mpoints_by_dev = parse_btrfs_mountinfo()
+
+    def get_subvol_mpoints_by_root_id(dev):
+        # Tends to be a less descriptive name, so keep the original
+        # name blkid gave for printing.
+        dev_canonical = os.path.realpath(dev)
+
+        if dev_canonical not in mpoints_by_dev:
+            return {}
+
+        mpoints_by_root_id = collections.defaultdict(list)
+        for volpath, mpoint in mpoints_by_dev[dev_canonical]:
+            mpoint_fd = os.open(mpoint, os.O_DIRECTORY)
+            if not is_subvolume(mpoint_fd):
+                continue
+            try:
+                root_id = get_root_id(mpoint_fd)
+                # Would help us show the volume path, by:
+                # 1. finding the volume in the tree of tree roots
+                # 2. finding the backref in the volume it points to
+                # Part 2. would require making our own private
+                # subvol=/ mount, existing mounts may not be suitable.
+                #volumes_from_root_tree(mpoint_fd)
+            except IOError as e:
+                if e.errno == errno.EPERM:
+                    break
+                raise
+            mpoints_by_root_id[root_id].append((volpath, mpoint))
+        return mpoints_by_root_id
+
+    seen_fs_ids = []
     for line in subprocess.check_output(
         'blkid -s LABEL -s UUID -t TYPE=btrfs'.split()
     ).splitlines():
         dev, label, uuid = BLKID_RE.match(line).groups()
-        # Tends to be a less descriptive name, so keep the original
-        # name blkid gave for printing.
-        dev_canonical = os.path.realpath(dev)
         sys.stdout.write('%s\n  Label: %s UUID: %s\n' % (dev, label, uuid))
         fs = sess.query(Filesystem).filter_by(uuid=uuid).scalar()
         if fs is not None:
-            mpoint_by_root_id = collections.defaultdict(list)
-            for (volpath, mpoint) in mpoints_by_dev[dev_canonical]:
-                mpoint_fd = os.open(mpoint, os.O_DIRECTORY)
-                st = os.fstat(mpoint_fd)
-                if st.st_ino != BTRFS_FIRST_FREE_OBJECTID:
-                    # Not the root of a subvolume
-                    continue
+            seen_fs_ids.append(fs.id)
+            mpoints_by_root_id = get_subvol_mpoints_by_root_id(dev)
+            show_fs(fs, mpoints_by_root_id, '    ', '  ')
 
-                try:
-                    mpoint_by_root_id[get_root_id(mpoint_fd)].append(
-                        (volpath, mpoint))
-                    if False:  # pragma: nocover
-                        volumes_from_root_tree(mpoint_fd)
-                except IOError as e:
-                    if e.errno == errno.EPERM:
-                        break
-                    raise
-
-            for vol in fs.volumes:
-                # Show the volume path, which requires
-                # finding the volume in the tree of tree roots?
-                # That may require a subvol=/ mount, existing
-                # mounts may not exist or may not be at subvolume paths.
-                sys.stdout.write(
-                    '    Volume %d last tracked generation %d size cutoff %d\n'
-                    % (vol.root_id, vol.last_tracked_generation,
-                       vol.size_cutoff))
-
-                if vol.root_id in mpoint_by_root_id:
-                    for (volpath, mpoint) in mpoint_by_root_id[vol.root_id]:
-                        sys.stdout.write('      Mounted on %s\n' % mpoint)
-                    sys.stdout.write('      Path %s\n' % volpath)
+    for fs in sess.query(Filesystem).filter(~ Filesystem.id.in_(seen_fs_ids)):
+        sys.stdout.write('Device unavailable, UUID: %s\n' % (fs.uuid,))
+        show_fs(fs, {}, '    ', '  ')
 
 
 def track_updated_files(sess, vol, tt):
