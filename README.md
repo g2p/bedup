@@ -15,7 +15,7 @@ This should get you started on Debian/Ubuntu:
 Install CFFI 0.4. It isn't released yet; this will install
 a development snapshot from bitbucket:
 
-    pip install --user https://bitbucket.org/cffi/cffi/get/tip.tar.gz
+    pip install --user https://bitbucket.org/cffi/cffi/get/default.tar.gz
 
 ## Option 1 (recommended): from a git clone
 
