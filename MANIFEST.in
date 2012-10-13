@@ -10,7 +10,7 @@ include btrfs-progs/rbtree.h
 include btrfs-progs/extent_io.h
 
 include COPYING
-include README.md
+include README.rst
 
 include tox.ini
 
