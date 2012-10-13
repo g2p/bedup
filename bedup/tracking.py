@@ -275,7 +275,11 @@ def track_updated_files(sess, vol, tt):
                         sess.delete(inode)
                     continue
 
-                tt.update(path=path.decode(FS_ENCODING))
+                try:
+                    path=path.decode(FS_ENCODING)
+                except ValueError:
+                    continue
+                tt.update(path=path)
                 tt.update(
                     desc='(ino %d outer gen %d inner gen %d size %d)' % (
                         ino, sh.transid, inode_gen, size))
