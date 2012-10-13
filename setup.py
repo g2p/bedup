@@ -48,6 +48,7 @@ setup(
     zip_safe=False,  # cargo-culted from the CFFI docs
     classifiers='''
         Programming Language :: Python :: 2
+        Programming Language :: Python :: 3
         Programming Language :: Python :: Implementation :: CPython
         Programming Language :: Python :: Implementation :: PyPy
         License :: OSI Approved :: GNU General Public License (GPL)
