@@ -25,7 +25,7 @@ def setup_module():
         'dd bs=4096 count=2048 if=/dev/urandom'.split() + ['of=' + sampledata])
     subprocess.check_call('truncate -s64M --'.split() + [fsimage])
     subprocess.check_call('mkfs.btrfs --'.split() + [fsimage])
-    subprocess.check_call('mount -o loop --'.split() + [fsimage, fs])
+    subprocess.check_call('mount -t btrfs -o loop --'.split() + [fsimage, fs])
     shutil.copy(sampledata, os.path.join(fs, 'one.sample'))
     shutil.copy(sampledata, os.path.join(fs, 'two.sample'))
     vol_fd = os.open(fs, os.O_DIRECTORY)
