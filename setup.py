@@ -26,7 +26,7 @@ setup(
     author_email='g2p.code+bedup@gmail.com',
     url='https://github.com/g2p/bedup',
     license='GNU GPL',
-    keywords='btrfs deduplication dedup',
+    keywords='btrfs deduplication filesystem dedup',
     description='Deduplication for Btrfs filesystems',
     install_requires=install_requires,
     entry_points={
