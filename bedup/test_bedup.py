@@ -24,7 +24,9 @@ def setup_module():
 
     subprocess.check_call(
         'dd bs=4096 count=2048 if=/dev/urandom'.split() + ['of=' + sampledata])
-    subprocess.check_call('truncate -s64M --'.split() + [fsimage])
+    # The older mkfs.btrfs on travis somehow needs 256M;
+    # sparse file, costs nothing
+    subprocess.check_call('truncate -s256M --'.split() + [fsimage])
     subprocess.check_call('mkfs.btrfs --'.split() + [fsimage])
     subprocess.check_call('mount -t btrfs -o loop --'.split() + [fsimage, fs])
     shutil.copy(sampledata, os.path.join(fs, 'one.sample'))
