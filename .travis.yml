@@ -1,11 +1,10 @@
 language: python
 
 install:
-- sudo aptitude update
+- uname -a
+- lsb_release -a
 - sudo aptitude -y install libffi-dev btrfs-tools
-- pip install --use-mirrors https://bitbucket.org/cffi/cffi/get/default.tar.gz
-- pip install --use-mirrors tox
-- git submodule update --init
+- pip install --use-mirrors tox https://bitbucket.org/cffi/cffi/get/default.tar.gz
 
 # PyPy compat: whenever https://launchpad.net/~pypy/+archive/ppa
 # gets a CFFI-compatible build (not in a release as of yet).
