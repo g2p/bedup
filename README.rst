@@ -1,7 +1,5 @@
 Deduplication for Btrfs.
 
-`|Build status with Travis| <http://travis-ci.org/g2p/bedup>`_
-
 Requirements
 ============
 
@@ -129,4 +127,4 @@ If you have file names with double-width CJK characters and you use
 screen, the display will be a bit messed up (with extraneous line jumps
 after those file names).
 
-.. |Build status with Travis| image:: https://secure.travis-ci.org/g2p/bedup.png
+.. image:: https://secure.travis-ci.org/g2p/bedup.png
