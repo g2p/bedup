@@ -174,7 +174,10 @@ def show_vols(sess):
             mpoints_by_root_id = get_subvol_mpoints_by_root_id(dev)
             show_fs(fs, mpoints_by_root_id, '    ', '  ')
 
-    for fs in sess.query(Filesystem).filter(~ Filesystem.id.in_(seen_fs_ids)):
+    query = sess.query(Filesystem)
+    if seen_fs_ids:
+        query = query.filter(~ Filesystem.id.in_(seen_fs_ids))
+    for fs in query:
         sys.stdout.write('Device unavailable, UUID: %s\n' % (fs.uuid,))
         show_fs(fs, {}, '    ', '  ')
 
