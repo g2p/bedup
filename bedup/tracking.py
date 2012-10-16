@@ -192,12 +192,15 @@ def track_updated_files(sess, vol, tt):
     top_generation = get_root_generation(vol.fd)
     if (vol.last_tracked_size_cutoff is not None
         and vol.last_tracked_size_cutoff <= vol.size_cutoff):
-        min_generation = vol.last_tracked_generation
+        min_generation = vol.last_tracked_generation + 1
     else:
         min_generation = 0
     tt.notify(
         'Scanning volume %r generations from %d to %d, with size cutoff %d'
         % (vol.desc, min_generation, top_generation, vol.size_cutoff))
+    if min_generation > top_generation:
+        tt.notify('Generation didn\'t change, skipping scan')
+        return
     tt.format(
         '{elapsed} Updated {desc:counter} items: '
         '{path:truncate-left} {desc}')
@@ -258,7 +261,7 @@ def track_updated_files(sess, vol, tt):
                     if inode_gen <= vol.last_tracked_generation:
                         continue
                 else:
-                    if inode_gen <= min_generation:
+                    if inode_gen < min_generation:
                         continue
                 if not stat.S_ISREG(mode):
                     continue
