@@ -111,6 +111,8 @@ def teardown_module():
         subprocess.check_call('lsof -n'.split() + [fs])
         raise
     finally:
+        os.unlink(db)
+        os.unlink(db + '-journal')
         os.unlink(fsimage)
         os.unlink(sampledata)
         os.rmdir(fs)
