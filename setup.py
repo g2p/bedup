@@ -6,9 +6,11 @@ from sys import version_info
 import bedup.btrfs
 import bedup.chattr
 import bedup.fiemap
+import bedup.futimens
 import bedup.ioprio
 import bedup.openat
 import bedup.syncfs
+import bedup.time
 
 install_requires = [
     #'cffi >= 0.4',  # 0.4 is not released and confuses pip
@@ -36,9 +38,11 @@ setup(
         bedup.btrfs.ffi.verifier.get_extension(),
         bedup.chattr.ffi.verifier.get_extension(),
         bedup.fiemap.ffi.verifier.get_extension(),
+        bedup.futimens.ffi.verifier.get_extension(),
         bedup.ioprio.ffi.verifier.get_extension(),
         bedup.openat.ffi.verifier.get_extension(),
         bedup.syncfs.ffi.verifier.get_extension(),
+        bedup.time.ffi.verifier.get_extension(),
     ],
     ext_package='bedup',
     packages=[

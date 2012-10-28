@@ -37,7 +37,8 @@ int clock_gettime(int clk_id, struct timespec *tp);
 
 lib = ffi.verify(
     '''#include <time.h>''',
-    libraries=['rt'])
+    libraries=['rt'],
+    ext_package='bedup')
 
 
 def monotonic_time():

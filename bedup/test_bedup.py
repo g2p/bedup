@@ -10,6 +10,7 @@ import pytest
 from .__main__ import main
 from .syncfs import syncfs
 from .btrfs import lookup_ino_paths, BTRFS_FIRST_FREE_OBJECTID
+from . import compat  # monkey-patch check_output in py2.6
 
 # Placate pyflakes
 db = fs = fsimage = sampledata = vol_fd = None
@@ -69,6 +70,12 @@ def boxed_call(argv, expected_rv=None):
     assert rv == expected_rv
 
 
+def stat(fname):
+    # stat without args would include ctime, use a custom format
+    return subprocess.check_output(
+        ['stat', '--printf=atime %x\nmtime %y\n', '--', fname])
+
+
 def test_functional():
     boxed_call('scan-vol --'.split() + [fs])
     with open(fs + '/one.sample', 'r+') as busy_file:
@@ -79,11 +86,15 @@ def test_functional():
     boxed_call(
         'dedup-files --defragment --'.split() +
         [fs + '/one.sample', fs + '/two.sample'])
+    stat0 = stat(fs + '/one.sample')
     with open(fs + '/one.sample', 'r+') as busy_file:
         boxed_call(
             'dedup-files --defragment --'.split() +
                 [fs + '/one.sample', fs + '/two.sample'],
             expected_rv=1)
+    stat1 = stat(fs + '/one.sample')
+    # Check that atime and mtime are restored
+    assert stat0 == stat1
     boxed_call('find-new --'.split() + [fs])
     boxed_call('show-vols'.split())
 

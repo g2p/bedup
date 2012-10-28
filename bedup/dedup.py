@@ -27,6 +27,7 @@ import stat
 
 from .btrfs import clone_data, defragment as btrfs_defragment
 from .chattr import editflags, FS_IMMUTABLE_FL
+from .futimens import fstat_ns, futimens
 
 
 BUFSIZE = 8192
@@ -183,11 +184,17 @@ def find_inodes_in_use(fds):
             yield (fd, use_info)
 
 
+RestoreInfo = collections.namedtuple(
+    'RestoreInfo', ('fd', 'immutable', 'atime', 'mtime'))
+
+
 class ImmutableFDs(object):
     """A context manager to mark a set of fds immutable.
 
     Actually works at the inode level, fds are just to make sure
     inodes can be referenced unambiguously.
+
+    This also restores atime and mtime when leaving.
     """
 
     # Alternatives: mandatory locking.
@@ -206,13 +213,22 @@ class ImmutableFDs(object):
             # Prevents anyone from creating write-mode file descriptors,
             # but the ones that already exist remain valid.
             was_immutable = editflags(fd, add_flags=FS_IMMUTABLE_FL)
-            if not was_immutable:
-                self.__revert_list.append(fd)
+            # editflags doesn't change atime or mtime;
+            # measure after locking then.
+            atime, mtime = fstat_ns(fd)
+            self.__revert_list.append(
+                RestoreInfo(fd, was_immutable, atime, mtime))
         return self
 
     def __exit__(self, exc_type, exc_value, traceback):
-        for fd in self.__revert_list:
-            editflags(fd, remove_flags=FS_IMMUTABLE_FL)
+        for (fd, immutable, atime, mtime) in reversed(self.__revert_list):
+            if not immutable:
+                editflags(fd, remove_flags=FS_IMMUTABLE_FL)
+            # XXX Someone might modify the file between editflags
+            # and futimens; oh well.
+            # Needs kernel changes either way, either a dedup ioctl
+            # or mandatory locking that doesn't touch file metadata.
+            futimens(fd, (atime, mtime))
 
     def __require_use_info(self):
         # We only track write use, other uses can appear after the /proc scan
