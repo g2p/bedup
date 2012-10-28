@@ -190,6 +190,11 @@ class ImmutableFDs(object):
     inodes can be referenced unambiguously.
     """
 
+    # Alternatives: mandatory locking.
+    # Needs -o remount,mand + a metadata update + the same scan
+    # for outstanding fds (although the race window is smaller).
+    # The only real advantage is portability to more filesystems.
+
     def __init__(self, fds):
         self.__fds = fds
         self.__revert_list = []
