@@ -20,7 +20,7 @@ snapshot from bitbucket:
 
 ::
 
-    pip install --user https://bitbucket.org/cffi/cffi/get/3cd724b5f6773383f83047fc75692c517995429d.tar.gz
+    pip install --user https://bitbucket.org/cffi/cffi/get/69cddb87c25f70c01c1dfc6da27b85f6cade6fd7.tar.gz
 
 Option 1 (recommended): from a git clone
 ----------------------------------------
