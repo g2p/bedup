@@ -28,7 +28,11 @@ def setup_module():
     # The older mkfs.btrfs on travis somehow needs 256M;
     # sparse file, costs nothing
     subprocess.check_call('truncate -s256M --'.split() + [fsimage])
-    subprocess.check_call('mkfs.btrfs --'.split() + [fsimage])
+    # mkfs.btrfs is buggy under libefence
+    env2 = dict(os.environ)
+    if 'LD_PRELOAD' in env2 and 'libefence.so' in env2['LD_PRELOAD']:
+        del env2['LD_PRELOAD']
+    subprocess.check_call('mkfs.btrfs --'.split() + [fsimage], env=env2)
     subprocess.check_call('mount -t btrfs -o loop --'.split() + [fsimage, fs])
     shutil.copy(sampledata, os.path.join(fs, 'one.sample'))
     shutil.copy(sampledata, os.path.join(fs, 'two.sample'))
