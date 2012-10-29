@@ -55,10 +55,12 @@ def fstat_ns(fd):
     stat = ffi.new('struct stat *')
     if lib.fstat(fd, stat) != 0:
         raise IOError(ffi.errno, os.strerror(ffi.errno), fd)
-    assert 0 <= stat.st_atim.tv_nsec < 1e9
-    assert 0 <= stat.st_mtim.tv_nsec < 1e9
-    _stat_ownership[stat.st_atim] = _stat_ownership[stat.st_mtim] = stat
-    return stat.st_atim, stat.st_mtim
+    # The nested structs seem to be recreated at every member access.
+    atime, mtime = stat.st_atim, stat.st_mtim
+    assert 0 <= atime.tv_nsec < 1e9
+    assert 0 <= mtime.tv_nsec < 1e9
+    _stat_ownership[atime] = _stat_ownership[mtime] = stat
+    return atime, mtime
 
 
 def futimens(fd, ns):
