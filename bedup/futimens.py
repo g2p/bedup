@@ -52,6 +52,8 @@ def fstat_ns(fd):
     stat = ffi.new('struct stat *')
     if lib.fstat(fd, stat) != 0:
         raise IOError(ffi.errno, os.strerror(ffi.errno), fd)
+    assert 0 <= stat.st_atim.tv_nsec < 1e9
+    assert 0 <= stat.st_mtim.tv_nsec < 1e9
     return stat.st_atim, stat.st_mtim
 
 
