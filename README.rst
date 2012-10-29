@@ -130,7 +130,6 @@ after those file names).
 Build status
 ============
 
-`Travis page <http://travis-ci.org/g2p/bedup>`_
-
-.. image:: https://secure.travis-ci.org/g2p/bedup.png
+.. image:: https://travis-ci.org/g2p/bedup.png
+   :target: https://travis-ci.org/g2p/bedup
 
