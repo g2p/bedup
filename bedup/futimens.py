@@ -18,6 +18,7 @@
 
 from cffi import FFI
 import os
+import weakref
 
 # XXX All this would work effortlessly in Python 3.3:
 # st_atime_ns, and os.utime(ns=())
@@ -48,12 +49,15 @@ lib = ffi.verify('''
     ''', ext_package='bedup')
 
 
+_stat_ownership = weakref.WeakKeyDictionary()
+
 def fstat_ns(fd):
     stat = ffi.new('struct stat *')
     if lib.fstat(fd, stat) != 0:
         raise IOError(ffi.errno, os.strerror(ffi.errno), fd)
     assert 0 <= stat.st_atim.tv_nsec < 1e9
     assert 0 <= stat.st_mtim.tv_nsec < 1e9
+    _stat_ownership[stat.st_atim] = _stat_ownership[stat.st_mtim] = stat
     return stat.st_atim, stat.st_mtim
 
 
