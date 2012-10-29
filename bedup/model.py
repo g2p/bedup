@@ -110,6 +110,15 @@ class VolumePathHistory(Base):
             sqlite_autoincrement=True))
 
 
+Volume.last_known_mountpoint = column_property(
+    select([VolumePathHistory.path])
+    .where(
+        VolumePathHistory.vol_id == Volume.id)
+    .order_by(-VolumePathHistory.id)
+    .label('last_known_mountpoint')
+)
+
+
 class Inode(Base):
     vol_id, vol = FK(Volume.id, primary_key=True)
     # inode number

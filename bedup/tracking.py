@@ -133,6 +133,10 @@ def show_fs(fs, mpoints_by_root_id, initial_indent, indent):
                     initial_indent + indent + 'Mounted on %s\n' % mpoint)
             # volpath should be the same for all mpoints
             sys.stdout.write(initial_indent + indent + 'Path %s\n' % volpath)
+        else:
+            sys.stdout.write(
+                initial_indent + indent + 'Last mounted on %s\n'
+                % vol.last_known_mountpoint)
 
 
 def show_vols(sess):
