@@ -70,6 +70,8 @@ def futimens(fd, ns):
     # changing the ctime.
     times = ffi.new('struct timespec[2]')
     atime, mtime = ns
+    assert 0 <= atime.tv_nsec < 1e9
+    assert 0 <= mtime.tv_nsec < 1e9
     times[0] = atime
     times[1] = mtime
     if lib.futimens(fd, times) != 0:
