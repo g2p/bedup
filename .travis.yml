@@ -5,7 +5,7 @@ install:
 - lsb_release -a
 - sudo touch /etc/suid-debug
 - sudo aptitude -y install libffi-dev btrfs-tools
-- pip install --use-mirrors tox https://bitbucket.org/cffi/cffi/get/default.tar.gz
+- pip install --use-mirrors tox https://bitbucket.org/cffi/cffi/get/3cd724b5f6773383f83047fc75692c517995429d.tar.gz
 
 # PyPy compat: whenever https://launchpad.net/~pypy/+archive/ppa
 # gets a CFFI-compatible build (not in a release as of yet).
