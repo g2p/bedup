@@ -51,8 +51,12 @@ def cmd_dedup_files(args):
 
 def cmd_find_new(args):
     volume_fd = os.open(args.volume, os.O_DIRECTORY)
+    if args.zero_terminated:
+        sep = '\0'
+    else:
+        sep = '\n'
     # May raise FindError, let Python print it
-    find_new(volume_fd, args.generation, sys.stdout)
+    find_new(volume_fd, args.generation, sys.stdout, terse=args.terse, sep=sep)
 
 
 def cmd_show_vols(args):
@@ -197,6 +201,11 @@ lists changes to volume since generation
 This is a reimplementation of btrfs find-new,
 modified to include directories as well.""")
     sp_find_new.set_defaults(action=cmd_find_new)
+    sp_find_new.add_argument(
+        '-0|--zero-terminated', dest='zero_terminated', action='store_true',
+        help='use a NUL character as the line separator')
+    sp_find_new.add_argument(
+        '--terse', dest='terse', action='store_true', help='print names only')
     sp_find_new.add_argument('volume', help='volume to search')
     sp_find_new.add_argument(
         'generation', type=int, nargs='?', default=0,

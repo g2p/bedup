@@ -428,7 +428,7 @@ def lookup_ino_path_one(volume_fd, ino):
     ioctl_pybug(volume_fd, lib.BTRFS_IOC_INO_LOOKUP, ffi.buffer(args))
     rv = ffi.string(args.name)
     # For some reason the kernel puts a final /
-    assert rv[-1:] == b'/', rv
+    assert rv[-1:] == b'/', repr(rv)
     return rv[:-1]
 
 
@@ -531,7 +531,7 @@ class FindError(Exception):
     pass
 
 
-def find_new(volume_fd, min_generation, results_file):
+def find_new(volume_fd, min_generation, results_file, terse, sep):
     args = ffi.new('struct btrfs_ioctl_search_args *')
     args_buffer = ffi.buffer(args)
     sk = args.key
@@ -573,41 +573,62 @@ def find_new(volume_fd, min_generation, results_file):
                     'struct btrfs_file_extent_item *', sh + 1)
                 found_gen = lib.btrfs_stack_file_extent_generation(
                     item)
-                results_file.write(
-                    'item type %d ino %d len %d gen0 %d gen1 %d\n' % (
-                        sh.type, sh.objectid, sh.len, sh.transid, found_gen))
+                if terse:
+                    name = lookup_ino_path_one(volume_fd, sh.objectid)
+                    results_file.write(name + sep)
+                else:
+                    results_file.write(
+                        'item type %d ino %d len %d gen0 %d gen1 %s%s' % (
+                            sh.type, sh.objectid, sh.len, sh.transid, found_gen, sep))
                 if found_gen < min_generation:
                     continue
             elif sh.type == lib.BTRFS_INODE_ITEM_KEY:
                 item = ffi.cast(
                     'struct btrfs_inode_item *', sh + 1)
                 found_gen = lib.btrfs_stack_inode_generation(item)
-                results_file.write(
-                    'item type %d ino %d len %d gen0 %d gen1 %d\n' % (
-                        sh.type, sh.objectid, sh.len, sh.transid, found_gen))
+                if terse:
+                    # XXX sh.objectid must be wrong
+                    continue
+                    name = lookup_ino_path_one(volume_fd, sh.objectid)
+                    results_file.write(name + sep)
+                else:
+                    results_file.write(
+                        'item type %d ino %d len %d gen0 %d gen1 %d%s' % (
+                            sh.type, sh.objectid, sh.len, sh.transid, found_gen, sep))
                 if found_gen < min_generation:
                     continue
             elif sh.type == lib.BTRFS_INODE_REF_KEY:
                 ref = ffi.cast(
                     'struct btrfs_inode_ref *', sh + 1)
                 name = name_of_inode_ref(ref)
-                results_file.write(
-                    'item type %d ino %d len %d gen0 %d name %s\n' % (
-                        sh.type, sh.objectid, sh.len, sh.transid, name))
+                if terse:
+                    # XXX short name
+                    continue
+                    results_file.write(name + sep)
+                else:
+                    results_file.write(
+                        'item type %d ino %d len %d gen0 %d name %s%s' % (
+                            sh.type, sh.objectid, sh.len, sh.transid, name, sep))
             elif (sh.type == lib.BTRFS_DIR_ITEM_KEY
                   or sh.type == lib.BTRFS_DIR_INDEX_KEY):
                 item = ffi.cast(
                     'struct btrfs_dir_item *', sh + 1)
                 name = name_of_dir_item(item)
-                results_file.write(
-                    'item type %d dir ino %d len %d'
-                    ' gen0 %d gen1 %d type1 %d name %s\n' % (
-                        sh.type, sh.objectid, sh.len,
-                        sh.transid, item.transid, item.type, name))
+                if terse:
+                    # XXX short name
+                    continue
+                    results_file.write(name + sep)
+                else:
+                    results_file.write(
+                        'item type %d dir ino %d len %d'
+                        ' gen0 %d gen1 %d type1 %d name %s%s' % (
+                            sh.type, sh.objectid, sh.len,
+                            sh.transid, item.transid, item.type, name, sep))
             else:
-                results_file.write(
-                    'item type %d oid %d len %d gen0 %d\n' % (
-                        sh.type, sh.objectid, sh.len, sh.transid))
+                if not terse:
+                    results_file.write(
+                        'item type %d oid %d len %d gen0 %d%s' % (
+                            sh.type, sh.objectid, sh.len, sh.transid, sep))
         sk.min_objectid = sh.objectid
         sk.min_type = sh.type
         sk.min_offset = sh.offset
