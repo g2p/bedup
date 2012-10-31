@@ -28,7 +28,7 @@ import xdg.BaseDirectory  # pyxdg, apt:python-xdg
 from contextlib import closing
 from sqlalchemy.orm import sessionmaker
 
-from .btrfs import find_new
+from .btrfs import find_new, get_root_generation
 from .dedup import dedup_same, FilesInUseError
 from .ioprio import set_idle_priority
 from .model import META
@@ -107,6 +107,14 @@ def vol_cmd(args):
                 dedup_tracked(sess, volset, tt)
 
 
+def cmd_generation(args):
+    volume_fd = os.open(args.volume, os.O_DIRECTORY)
+    if args.flush:
+        syncfs(volume_fd)
+    generation = get_root_generation(volume_fd)
+    print('%d' % generation)
+
+
 def sql_flags(parser):
     parser.add_argument(
         '--db-path', dest='db_path',
@@ -127,6 +135,7 @@ def vol_flags(parser):
 
 
 def scan_flags(parser):
+    vol_flags(parser)
     parser.add_argument(
         '--flush', action='store_true', dest='flush',
         help='Flush outstanding data using syncfs before scanning volumes')
@@ -139,13 +148,11 @@ def main(argv):
     sp_scan_vol = commands.add_parser('scan-vol', description="""
 Scans listed volumes to keep track of potentially duplicated files.""")
     sp_scan_vol.set_defaults(action=vol_cmd)
-    vol_flags(sp_scan_vol)
     scan_flags(sp_scan_vol)
 
     sp_dedup_vol = commands.add_parser('dedup-vol', description="""
 Runs scan-vol, then deduplicates identical files.""")
     sp_dedup_vol.set_defaults(action=vol_cmd)
-    vol_flags(sp_dedup_vol)
     scan_flags(sp_dedup_vol)
 
     sp_forget_vol = commands.add_parser('forget-vol', description="""
@@ -173,6 +180,15 @@ which displays the extent map of files.
     sp_dedup_files.add_argument(
         '--defragment', action='store_true',
         help='defragment the source file first')
+
+    sp_generation = commands.add_parser(
+        'generation', description="""
+Show the btrfs generation of VOLUME""")
+    sp_generation.set_defaults(action=cmd_generation)
+    sp_generation.add_argument('volume', help='btrfs volume')
+    sp_generation.add_argument(
+        '--flush', action='store_true', dest='flush',
+        help='Flush outstanding data using syncfs before lookup')
 
     sp_find_new = commands.add_parser(
         'find-new', description="""
