@@ -32,6 +32,7 @@ from .btrfs import find_new
 from .dedup import dedup_same, FilesInUseError
 from .ioprio import set_idle_priority
 from .model import META
+from .syncfs import syncfs
 from .termupdates import TermTemplate
 from .tracking import (
     show_vols, get_vol, track_updated_files, dedup_tracked, forget_vol)
@@ -95,6 +96,8 @@ def vol_cmd(args):
         if args.command in ('scan-vol', 'dedup-vol'):
             set_idle_priority()
             for vol in volumes:
+                if args.flush:
+                    syncfs(vol.fd)
                 # May raise IOError
                 track_updated_files(sess, vol, tt)
                 vols_by_fs[vol.fs].append(vol)
@@ -123,6 +126,12 @@ def vol_flags(parser):
         'Lowering the cutoff will trigger a partial rescan of older files.')
 
 
+def scan_flags(parser):
+    parser.add_argument(
+        '--flush', action='store_true', dest='flush',
+        help='Flush outstanding data using syncfs before scanning volumes')
+
+
 def main(argv):
     parser = argparse.ArgumentParser(prog='python -m bedup')
     commands = parser.add_subparsers(dest='command')
@@ -131,11 +140,13 @@ def main(argv):
 Scans listed volumes to keep track of potentially duplicated files.""")
     sp_scan_vol.set_defaults(action=vol_cmd)
     vol_flags(sp_scan_vol)
+    scan_flags(sp_scan_vol)
 
     sp_dedup_vol = commands.add_parser('dedup-vol', description="""
 Runs scan-vol, then deduplicates identical files.""")
     sp_dedup_vol.set_defaults(action=vol_cmd)
     vol_flags(sp_dedup_vol)
+    scan_flags(sp_dedup_vol)
 
     sp_forget_vol = commands.add_parser('forget-vol', description="""
 Forget tracking data for the listed volumes. Mostly useful for testing.""")
