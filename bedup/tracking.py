@@ -394,16 +394,18 @@ def dedup_tracked(sess, volset, tt):
             by_hash = collections.defaultdict(list)
 
             for inode in comm3.inodes:
-                path = lookup_ino_path_one(inode.vol.fd, inode.ino)
                 # Open everything rw, we can't pick one for the source side
                 # yet because the crypto hash might eliminate it.
                 # We may also want to defragment the source.
                 try:
+                    path = lookup_ino_path_one(inode.vol.fd, inode.ino)
                     afile = fopenat_rw(inode.vol.fd, path)
                 except IOError as e:
                     # File contains the image of a running process,
                     # we can't open it in write mode.
                     if e.errno == errno.ETXTBSY:
+                        continue
+                    elif e.errno == errno.ENOENT:
                         continue
                     raise
 
