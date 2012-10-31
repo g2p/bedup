@@ -66,10 +66,18 @@ def cmd_show_vols(args):
 
 def sql_setup(dbapi_con, con_record):
     cur = dbapi_con.cursor()
+    # Uncripple the SQL implementation
     cur.execute('PRAGMA foreign_keys = ON')
     cur.execute('PRAGMA foreign_keys')
     val = cur.fetchone()
     assert val == (1,), val
+
+    # So that writers do not block readers
+    # https://www.sqlite.org/wal.html
+    cur.execute('PRAGMA journal_mode = WAL')
+    cur.execute('PRAGMA journal_mode')
+    val = cur.fetchone()
+    assert val == ('wal',), val
 
 
 def get_session(args):
