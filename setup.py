@@ -61,5 +61,7 @@ setup(
         Topic :: Utilities
         Environment :: Console
     '''.strip().splitlines(),
-)
+    long_description='''
+    See `github.com/g2p/bedup <https://github.com/g2p/bedup#readme>`_
+    for usage instructions.''')
 
