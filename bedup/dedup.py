@@ -201,6 +201,9 @@ class ImmutableFDs(object):
     # Needs -o remount,mand + a metadata update + the same scan
     # for outstanding fds (although the race window is smaller).
     # The only real advantage is portability to more filesystems.
+    # Since mandatory locking is a mount option, chances are
+    # it is scoped to a mount namespace, which would complicate
+    # attempts to enforce it with a remount.
 
     def __init__(self, fds):
         self.__fds = fds
