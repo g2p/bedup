@@ -384,6 +384,8 @@ def dedup_tracked(sess, volset, tt):
             '{elapsed} Full hash and deduplication '
             '{comm3:counter}/{comm3:total}')
         tt.set_total(comm3=le)
+        skipped = []
+
         for comm3 in query:
             space_gain3 += comm3.size * (len(comm3.inodes) - 1)
             tt.update(comm3=comm3)
@@ -404,26 +406,31 @@ def dedup_tracked(sess, volset, tt):
                     # File contains the image of a running process,
                     # we can't open it in write mode.
                     if e.errno == errno.ETXTBSY:
+                        skipped.append(inode)
                         continue
                     elif e.errno == errno.ENOENT:
+                        # Don't delete the inode here, it may still exist at a
+                        # different place (eg because a parent dir moved).
+                        skipped.append(inode)
                         continue
                     raise
 
                 # It's not completely guaranteed we have the right inode,
                 # there may still be race conditions at this point.
                 # Gets re-checked below (tell and fstat).
-                fd_inodes[afile.fileno()] = inode
-                fd_names[afile.fileno()] = path
+                fd = afile.fileno()
+                fd_inodes[fd] = inode
+                fd_names[fd] = path
                 files.append(afile)
-                fds.append(afile.fileno())
+                fds.append(fd)
 
             with ImmutableFDs(fds) as immutability:
                 for afile in files:
-                    afd = afile.fileno()
-                    if afd in immutability.fds_in_write_use:
-                        aname = fd_names[afd]
-                        tt.notify('File %r is in use, skipping' % aname)
-                        # TODO: prevent has_updates from being cleared
+                    fd = afile.fileno()
+                    inode = fd_inodes[fd]
+                    if fd in immutability.fds_in_write_use:
+                        tt.notify('File %r is in use, skipping' % fd_names[fd])
+                        skipped.append(inode)
                         continue
                     hasher = hashlib.sha1()
                     for buf in iter(lambda: afile.read(BUFSIZE), b''):
@@ -431,13 +438,15 @@ def dedup_tracked(sess, volset, tt):
 
                     # Mostly for the sake of correct logging, might also
                     # prevent some form of security exploitation.
-                    # The file will pop up in the next scan anyway.
                     if afile.tell() != comm3.size:
+                        skipped.append(inode)
                         continue
-                    st = os.fstat(afd)
-                    if st.st_ino != fd_inodes[afd].ino:
+                    st = os.fstat(fd)
+                    if st.st_ino != inode.ino:
+                        skipped.append(inode)
                         continue
-                    if st.st_dev != fd_inodes[afd].vol.st_dev:
+                    if st.st_dev != inode.vol.st_dev:
+                        skipped.append(inode)
                         continue
 
                     by_hash[hasher.digest()].append(afile)
@@ -493,5 +502,7 @@ def dedup_tracked(sess, volset, tt):
                 Inode.vol_id.in_(vol_ids)
             ).values(
                 has_updates=False))
+        for inode in skipped:
+            inode.has_updates = True
         sess.commit()
 
