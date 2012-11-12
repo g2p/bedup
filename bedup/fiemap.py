@@ -77,6 +77,7 @@ struct fiemap {
 ''')
 
 lib = ffi.verify('''
+#include <inttypes.h>
 #include <linux/fs.h>
 #include <linux/fiemap.h>
 ''', ext_package='bedup')
