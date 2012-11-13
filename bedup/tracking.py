@@ -23,6 +23,7 @@ import fcntl
 import hashlib
 import os
 import re
+import resource
 import stat
 import subprocess
 import sys
@@ -386,14 +387,31 @@ def dedup_tracked(sess, volset, tt):
         tt.set_total(comm3=le)
         skipped = []
 
+        ofile_soft, ofile_hard = resource.getrlimit(
+            resource.RLIMIT_OFILE)
+
         for comm3 in query:
-            space_gain3 += comm3.size * (len(comm3.inodes) - 1)
+            count3 = len(comm3.inodes)
+            space_gain3 += comm3.size * (count3 - 1)
             tt.update(comm3=comm3)
             files = []
             fds = []
             fd_names = {}
             fd_inodes = {}
             by_hash = collections.defaultdict(list)
+
+            if count3 > ofile_soft:
+                # TODO: add some slack here.
+                # Would have to depend on our open file count,
+                # which depends on how many volumes we are dealing with.
+                tt.notify(
+                    'Too many duplicates (%d at size %d), '
+                    'would bring us over the open files limit (%d, %d).'
+                    % (count3, comm3.size, ofile_soft, ofile_hard))
+                for inode in comm3.inodes:
+                    if inode.has_updates:
+                        skipped.append(inode)
+                continue
 
             for inode in comm3.inodes:
                 # Open everything rw, we can't pick one for the source side
