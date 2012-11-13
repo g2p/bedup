@@ -389,6 +389,9 @@ def dedup_tracked(sess, volset, tt):
 
         ofile_soft, ofile_hard = resource.getrlimit(
             resource.RLIMIT_OFILE)
+        # 3 for stdio, 3 for sqlite (wal mode), 1 that somehow doesn't
+        # get closed, 1 per volume.
+        ofile_reserved = 7 + len(volset)
 
         for comm3 in query:
             count3 = len(comm3.inodes)
@@ -400,12 +403,7 @@ def dedup_tracked(sess, volset, tt):
             fd_inodes = {}
             by_hash = collections.defaultdict(list)
 
-            if count3 > ofile_soft:
-                # TODO: add some slack here.
-                # Would have to depend on our open file count, which depends on
-                # how many volumes we are dealing with.
-                # 3 for stdio, 3 for sqlite (wal mode), 1 that somehow doesn't
-                # get closed, 1 per volume.
+            if count3 + ofile_reserved > ofile_soft:
                 tt.notify(
                     'Too many duplicates (%d at size %d), '
                     'would bring us over the open files limit (%d, %d).'
