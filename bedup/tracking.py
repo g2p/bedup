@@ -402,8 +402,10 @@ def dedup_tracked(sess, volset, tt):
 
             if count3 > ofile_soft:
                 # TODO: add some slack here.
-                # Would have to depend on our open file count,
-                # which depends on how many volumes we are dealing with.
+                # Would have to depend on our open file count, which depends on
+                # how many volumes we are dealing with.
+                # 3 for stdio, 3 for sqlite (wal mode), 1 that somehow doesn't
+                # get closed, 1 per volume.
                 tt.notify(
                     'Too many duplicates (%d at size %d), '
                     'would bring us over the open files limit (%d, %d).'
