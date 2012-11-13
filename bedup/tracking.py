@@ -403,7 +403,11 @@ def dedup_tracked(sess, volset, tt):
             fd_inodes = {}
             by_hash = collections.defaultdict(list)
 
-            if count3 + ofile_reserved > ofile_soft:
+            # Hopefully close any files we left around
+            import gc; gc.collect()
+
+            # XXX I have no justification for doubling count3
+            if 2 * count3 + ofile_reserved > ofile_soft:
                 tt.notify(
                     'Too many duplicates (%d at size %d), '
                     'would bring us over the open files limit (%d, %d).'
