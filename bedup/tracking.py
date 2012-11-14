@@ -407,15 +407,21 @@ def dedup_tracked(sess, volset, tt):
             import gc; gc.collect()
 
             # XXX I have no justification for doubling count3
-            if 2 * count3 + ofile_reserved > ofile_soft:
-                tt.notify(
-                    'Too many duplicates (%d at size %d), '
-                    'would bring us over the open files limit (%d, %d).'
-                    % (count3, comm3.size, ofile_soft, ofile_hard))
-                for inode in comm3.inodes:
-                    if inode.has_updates:
-                        skipped.append(inode)
-                continue
+            ofile_req = 2 * count3 + ofile_reserved
+            if ofile_req > ofile_soft:
+                if ofile_req <= ofile_hard:
+                    resource.setrlimit(
+                        resource.RLIMIT_OFILE, (ofile_req, ofile_hard))
+                    ofile_soft = ofile_req
+                else:
+                    tt.notify(
+                        'Too many duplicates (%d at size %d), '
+                        'would bring us over the open files limit (%d, %d).'
+                        % (count3, comm3.size, ofile_soft, ofile_hard))
+                    for inode in comm3.inodes:
+                        if inode.has_updates:
+                            skipped.append(inode)
+                    continue
 
             for inode in comm3.inodes:
                 # Open everything rw, we can't pick one for the source side
