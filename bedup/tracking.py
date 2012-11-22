@@ -364,7 +364,7 @@ def dedup_tracked(sess, volset, tt):
         tt.format('{elapsed} Extent map {comm2:counter}/{comm2:total}')
         tt.set_total(comm2=le)
         for comm2 in query:
-            space_gain2 += comm2.size * (len(comm2.inodes) - 1)
+            space_gain2 += comm2.size * (comm2.inode_count - 1)
             tt.update(comm2=comm2)
             for inode in comm2.inodes:
                 try:
@@ -394,7 +394,8 @@ def dedup_tracked(sess, volset, tt):
         ofile_reserved = 7 + len(volset)
 
         for comm3 in query:
-            count3 = len(comm3.inodes)
+            assert comm3.fiemap_count == len(comm3.inodes)
+            count3 = comm3.fiemap_count
             space_gain3 += comm3.size * (count3 - 1)
             tt.update(comm3=comm3)
             files = []
