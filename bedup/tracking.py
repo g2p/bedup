@@ -314,10 +314,8 @@ def dedup_tracked(sess, volset, tt):
     Commonality1, Commonality2, Commonality3 = comm_mappings(vol_ids)
 
     try:
-        # Make a list so we can get the length without querying twice
-        # Might be wasteful if the common set is really big though.
-        query = list(sess.query(Commonality1))
-        le = len(query)
+        query = sess.query(Commonality1)
+        le = query.count()
         if not le:
             return
 
