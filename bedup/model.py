@@ -215,7 +215,7 @@ def comm_mappings(vol_ids):
         ).having(and_(
             literal_column('inode_count') > 1,
             literal_column('has_updates') > 0,
-        )).alias()
+        )).alias('commonality1')
 
         __mapper_args__ = (
             dict(primary_key=[
@@ -248,7 +248,7 @@ def comm_mappings(vol_ids):
         ).having(and_(
             literal_column('inode_count') > 1,
             literal_column('has_updates') > 0,
-        )).alias()
+        )).alias('commonality2')
 
         __mapper_args__ = (
             dict(primary_key=[
@@ -284,7 +284,7 @@ def comm_mappings(vol_ids):
         ).having(and_(
             literal_column('fiemap_count') > 1,
             literal_column('has_updates') > 0,
-        )).alias()
+        )).alias('commonality3')
 
         __mapper_args__ = (
             dict(primary_key=[
