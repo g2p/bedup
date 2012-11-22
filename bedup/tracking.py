@@ -394,8 +394,7 @@ def dedup_tracked(sess, volset, tt):
         ofile_reserved = 7 + len(volset)
 
         for comm3 in query:
-            assert comm3.fiemap_count == len(comm3.inodes)
-            count3 = comm3.fiemap_count
+            count3 = comm3.inode_count
             space_gain3 += comm3.size * (count3 - 1)
             tt.update(comm3=comm3)
             files = []
