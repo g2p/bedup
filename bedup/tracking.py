@@ -324,7 +324,9 @@ def dedup_tracked(sess, volset, tt):
             '{comm1:counter}/{comm1:total}')
         tt.set_total(comm1=le)
         for comm1 in query:
-            space_gain1 += comm1.size * (len(comm1.inodes) - 1)
+            # True, but might be expensive to compute
+            #assert comm1.inode_count == len(comm1.inodes)
+            space_gain1 += comm1.size * (comm1.inode_count - 1)
             tt.update(comm1=comm1)
             for inode in comm1.inodes:
                 # XXX Need to cope with deleted inodes.
