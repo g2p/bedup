@@ -203,14 +203,14 @@ def comm_mappings(vol_ids):
 
     class Commonality1(Base):
         __table__ = select([
-            Inode.fs_id,
+            #Inode.fs_id,
             Inode.size,
             func.count().label('inode_count'),
             func.max(Inode.has_updates).label('has_updates'),
         ]).where(
             Inode.vol_id.in_(vol_ids)
         ).group_by(
-            Inode.fs_id,
+            #Inode.fs_id,
             Inode.size,
         ).having(and_(
             literal_column('inode_count') > 1,
@@ -219,14 +219,14 @@ def comm_mappings(vol_ids):
 
         __mapper_args__ = (
             dict(primary_key=[
-                __table__.c.fs_id,
+                #__table__.c.fs_id,
                 __table__.c.size,
             ]))
 
         inodes = relationship(
             Inode,
             primaryjoin=and_(
-                Inode.fs_id == __table__.c.fs_id,
+                #Inode.fs_id == __table__.c.fs_id,
                 Inode.vol_id.in_(vol_ids),
                 Inode.size == __table__.c.size),
             foreign_keys=list(Inode.__table__.c))
