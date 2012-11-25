@@ -31,6 +31,14 @@ from . import fiemap
 from .datetime import UTC
 
 
+def parent_entity(cattr):
+    # This got renamed in 0.8, leaving no easy way to handle both versions.
+    try:
+        return cattr.parent
+    except AttributeError:
+        return cattr.parententity
+
+
 def FK(cattr, primary_key=False, backref=None, nullable=False):
     col, = cattr.property.columns
     return (
@@ -38,7 +46,8 @@ def FK(cattr, primary_key=False, backref=None, nullable=False):
             col.type, ForeignKey(col),
             primary_key=primary_key,
             nullable=nullable),
-        relationship(cattr.parententity, backref=backref))
+        relationship(
+            parent_entity(cattr), backref=backref))
 
 
 class UTCDateTime(TypeDecorator):
