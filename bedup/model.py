@@ -131,7 +131,8 @@ class InodeProps(object):
     @declared_attr
     def fs_id(cls):
         return column_property(
-            select([Volume.fs_id]).where(Volume.id == cls.vol_id).label('fs_id'))
+            select([Volume.fs_id]).where(
+                Volume.id == cls.vol_id).label('fs_id'))
 
     def mini_hash_from_file(self, rfile):
         # A very cheap, very partial hash for quick disambiguation
@@ -209,24 +210,24 @@ DedupEvent.inode_count = column_property(
     .label('inode_count'))
 
 
-def comm_mappings(vol_ids):
+def comm_mappings(fs_id, vol_ids):
     class FilteredInode(Base, InodeProps):
         __table__ = select(
             Inode.__table__.c
-        ).where(
-            Inode.__table__.c.vol_id.in_(vol_ids)).alias('filtered_inode')
+        ).where(and_(
+            Inode.__table__.c.vol_id.in_(vol_ids),
+            Inode.fs_id == fs_id,
+        )).alias('filtered_inode')
 
         vol_id = __table__.c.vol_id
         vol = relationship(Volume)
 
     class Commonality1(Base):
         __table__ = select([
-            FilteredInode.fs_id,
             FilteredInode.size,
             func.count().label('inode_count'),
             func.max(FilteredInode.has_updates).label('has_updates'),
         ]).group_by(
-            FilteredInode.fs_id,
             FilteredInode.size,
         ).having(and_(
             literal_column('inode_count') > 1,
@@ -235,20 +236,17 @@ def comm_mappings(vol_ids):
 
         __mapper_args__ = (
             dict(primary_key=[
-                __table__.c.fs_id,
                 __table__.c.size,
             ]))
 
         inodes = relationship(
             FilteredInode,
             primaryjoin=and_(
-                FilteredInode.fs_id == __table__.c.fs_id,
                 FilteredInode.size == __table__.c.size),
             foreign_keys=list(FilteredInode.__table__.c))
 
     class Commonality2(Base):
         __table__ = select([
-            FilteredInode.fs_id,
             FilteredInode.size,
             FilteredInode.mini_hash,
             func.count().label('inode_count'),
@@ -256,7 +254,6 @@ def comm_mappings(vol_ids):
         ]).where(and_(
             FilteredInode.mini_hash != None,
         )).group_by(
-            FilteredInode.fs_id,
             FilteredInode.size,
             FilteredInode.mini_hash,
         ).having(and_(
@@ -266,7 +263,6 @@ def comm_mappings(vol_ids):
 
         __mapper_args__ = (
             dict(primary_key=[
-                __table__.c.fs_id,
                 __table__.c.size,
                 __table__.c.mini_hash,
             ]))
@@ -274,7 +270,6 @@ def comm_mappings(vol_ids):
         inodes = relationship(
             FilteredInode,
             primaryjoin=and_(
-                FilteredInode.fs_id == __table__.c.fs_id,
                 FilteredInode.size == __table__.c.size,
                 FilteredInode.mini_hash == __table__.c.mini_hash),
             foreign_keys=list(FilteredInode.__table__.c))
@@ -284,12 +279,10 @@ def comm_mappings(vol_ids):
             backref='comm2',
             foreign_keys=list(__table__.c),
             primaryjoin=and_(
-                Commonality1.__table__.c.fs_id == __table__.c.fs_id,
                 Commonality1.__table__.c.size == __table__.c.size))
 
     class Commonality3(Base):
         __table__ = select([
-            FilteredInode.fs_id,
             FilteredInode.size,
             FilteredInode.mini_hash,
             func.count().label('inode_count'),
@@ -299,7 +292,6 @@ def comm_mappings(vol_ids):
             FilteredInode.mini_hash != None,
             FilteredInode.fiemap_hash != None,
         )).group_by(
-            FilteredInode.fs_id,
             FilteredInode.size,
             FilteredInode.mini_hash,
         ).having(and_(
@@ -309,7 +301,6 @@ def comm_mappings(vol_ids):
 
         __mapper_args__ = (
             dict(primary_key=[
-                __table__.c.fs_id,
                 __table__.c.size,
                 __table__.c.mini_hash,
             ]))
@@ -317,7 +308,6 @@ def comm_mappings(vol_ids):
         inodes = relationship(
             FilteredInode,
             primaryjoin=and_(
-                FilteredInode.fs_id == __table__.c.fs_id,
                 FilteredInode.size == __table__.c.size,
                 FilteredInode.mini_hash == __table__.c.mini_hash),
             foreign_keys=list(FilteredInode.__table__.c))
@@ -328,7 +318,6 @@ def comm_mappings(vol_ids):
             uselist=False,
             foreign_keys=list(__table__.c),
             primaryjoin=and_(
-                Commonality2.__table__.c.fs_id == __table__.c.fs_id,
                 Commonality2.__table__.c.size == __table__.c.size,
                 Commonality2.__table__.c.mini_hash == __table__.c.mini_hash))
 
