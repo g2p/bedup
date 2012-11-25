@@ -124,11 +124,29 @@ Volume.last_known_mountpoint = column_property(
     .where(
         VolumePathHistory.vol_id == Volume.id)
     .order_by(-VolumePathHistory.id)
-    .label('last_known_mountpoint')
-)
+    .label('last_known_mountpoint'))
 
 
-class Inode(Base):
+class InodeProps(object):
+    @declared_attr
+    def fs_id(cls):
+        return column_property(
+            select([Volume.fs_id]).where(Volume.id == cls.vol_id).label('fs_id'))
+
+    def mini_hash_from_file(self, rfile):
+        # A very cheap, very partial hash for quick disambiguation
+        # Won't help with things like zeroed or sparse files.
+        # The mini_hash for those is 0x10000001
+        rfile.seek(int(self.size * .3))
+        # bitops to make unsigned, for better readability
+        self.mini_hash = adler32(rfile.read(4096)) & 0xffffffff
+
+    def fiemap_hash_from_file(self, rfile):
+        extents = tuple(fiemap.fiemap(rfile.fileno()))
+        self.fiemap_hash = hash(extents)
+
+
+class Inode(Base, InodeProps):
     vol_id, vol = FK(Volume.id, primary_key=True)
     # inode number
     ino = Column(Integer, primary_key=True)
@@ -143,21 +161,6 @@ class Inode(Base):
     # appears in the volume scan, and reset whenever we do
     # a dedup pass.
     has_updates = Column(Boolean, index=True, nullable=False)
-
-    fs_id = column_property(
-        select([Volume.fs_id]).where(Volume.id == vol_id).label('fs_id'))
-
-    def mini_hash_from_file(self, rfile):
-        # A very cheap, very partial hash for quick disambiguation
-        # Won't help with things like zeroed or sparse files.
-        # The mini_hash for those is 0x10000001
-        rfile.seek(int(self.size * .3))
-        # bitops to make unsigned, for better readability
-        self.mini_hash = adler32(rfile.read(4096)) & 0xffffffff
-
-    def fiemap_hash_from_file(self, rfile):
-        extents = tuple(fiemap.fiemap(rfile.fileno()))
-        self.fiemap_hash = hash(extents)
 
     def __repr__(self):
         return 'Inode(ino=%d, volume=%d)' % (self.ino, self.vol_id)
@@ -207,20 +210,26 @@ DedupEvent.inode_count = column_property(
 
 
 def comm_mappings(vol_ids):
-    # XXX Is there a way to factor the vol_id.in_ as a subquery?
-    # or to have a Comm3 -> Comm2 -> Comm1 relationship?
+    # XXX Is there a way to have a Comm3 -> Comm2 -> Comm1 relationship?
+
+    class FilteredInode(Base, InodeProps):
+        __table__ = select(
+            Inode.__table__.c
+        ).where(
+            Inode.__table__.c.vol_id.in_(vol_ids)).alias('filtered_inode')
+
+        vol_id = __table__.c.vol_id
+        vol = relationship(Volume)
 
     class Commonality1(Base):
         __table__ = select([
-            Inode.fs_id,
-            Inode.size,
+            FilteredInode.fs_id,
+            FilteredInode.size,
             func.count().label('inode_count'),
-            func.max(Inode.has_updates).label('has_updates'),
-        ]).where(
-            Inode.vol_id.in_(vol_ids)
-        ).group_by(
-            Inode.fs_id,
-            Inode.size,
+            func.max(FilteredInode.has_updates).label('has_updates'),
+        ]).group_by(
+            FilteredInode.fs_id,
+            FilteredInode.size,
         ).having(and_(
             literal_column('inode_count') > 1,
             literal_column('has_updates') > 0,
@@ -233,27 +242,25 @@ def comm_mappings(vol_ids):
             ]))
 
         inodes = relationship(
-            Inode,
+            FilteredInode,
             primaryjoin=and_(
-                Inode.fs_id == __table__.c.fs_id,
-                Inode.vol_id.in_(vol_ids),
-                Inode.size == __table__.c.size),
-            foreign_keys=list(Inode.__table__.c))
+                FilteredInode.fs_id == __table__.c.fs_id,
+                FilteredInode.size == __table__.c.size),
+            foreign_keys=list(FilteredInode.__table__.c))
 
     class Commonality2(Base):
         __table__ = select([
-            Inode.fs_id,
-            Inode.size,
-            Inode.mini_hash,
+            FilteredInode.fs_id,
+            FilteredInode.size,
+            FilteredInode.mini_hash,
             func.count().label('inode_count'),
-            func.max(Inode.has_updates).label('has_updates'),
+            func.max(FilteredInode.has_updates).label('has_updates'),
         ]).where(and_(
-            Inode.mini_hash != None,
-            Inode.vol_id.in_(vol_ids),
+            FilteredInode.mini_hash != None,
         )).group_by(
-            Inode.fs_id,
-            Inode.size,
-            Inode.mini_hash,
+            FilteredInode.fs_id,
+            FilteredInode.size,
+            FilteredInode.mini_hash,
         ).having(and_(
             literal_column('inode_count') > 1,
             literal_column('has_updates') > 0,
@@ -267,30 +274,28 @@ def comm_mappings(vol_ids):
             ]))
 
         inodes = relationship(
-            Inode,
+            FilteredInode,
             primaryjoin=and_(
-                Inode.fs_id == __table__.c.fs_id,
-                Inode.vol_id.in_(vol_ids),
-                Inode.size == __table__.c.size,
-                Inode.mini_hash == __table__.c.mini_hash),
-            foreign_keys=list(Inode.__table__.c))
+                FilteredInode.fs_id == __table__.c.fs_id,
+                FilteredInode.size == __table__.c.size,
+                FilteredInode.mini_hash == __table__.c.mini_hash),
+            foreign_keys=list(FilteredInode.__table__.c))
 
     class Commonality3(Base):
         __table__ = select([
-            Inode.fs_id,
-            Inode.size,
-            Inode.mini_hash,
+            FilteredInode.fs_id,
+            FilteredInode.size,
+            FilteredInode.mini_hash,
             func.count().label('inode_count'),
-            func.count(distinct(Inode.fiemap_hash)).label('fiemap_count'),
-            func.max(Inode.has_updates).label('has_updates'),
+            func.count(distinct(FilteredInode.fiemap_hash)).label('fiemap_count'),
+            func.max(FilteredInode.has_updates).label('has_updates'),
         ]).where(and_(
-            Inode.mini_hash != None,
-            Inode.fiemap_hash != None,
-            Inode.vol_id.in_(vol_ids),
+            FilteredInode.mini_hash != None,
+            FilteredInode.fiemap_hash != None,
         )).group_by(
-            Inode.fs_id,
-            Inode.size,
-            Inode.mini_hash,
+            FilteredInode.fs_id,
+            FilteredInode.size,
+            FilteredInode.mini_hash,
         ).having(and_(
             literal_column('fiemap_count') > 1,
             literal_column('has_updates') > 0,
@@ -304,13 +309,12 @@ def comm_mappings(vol_ids):
             ]))
 
         inodes = relationship(
-            Inode,
+            FilteredInode,
             primaryjoin=and_(
-                Inode.fs_id == __table__.c.fs_id,
-                Inode.vol_id.in_(vol_ids),
-                Inode.size == __table__.c.size,
-                Inode.mini_hash == __table__.c.mini_hash),
-            foreign_keys=list(Inode.__table__.c))
+                FilteredInode.fs_id == __table__.c.fs_id,
+                FilteredInode.size == __table__.c.size,
+                FilteredInode.mini_hash == __table__.c.mini_hash),
+            foreign_keys=list(FilteredInode.__table__.c))
 
     # Commonality4 would be a crypto hash, but it's not part of this model atm
     return Commonality1, Commonality2, Commonality3
