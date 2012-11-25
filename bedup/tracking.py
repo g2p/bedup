@@ -306,64 +306,73 @@ def track_updated_files(sess, vol, tt):
 
 
 def dedup_tracked(sess, volset, tt):
-    space_gain1 = space_gain2 = space_gain3 = 0
-    vol_ids = [vol.id for vol in volset]
+    skipped = []
     fs = volset[0].fs
+    vol_ids = [vol.id for vol in volset]
     assert all(vol.fs == fs for vol in volset)
 
-    Commonality1, Commonality2, Commonality3 = comm_mappings(vol_ids)
+    # 3 for stdio, 3 for sqlite (wal mode), 1 that somehow doesn't
+    # get closed, 1 per volume.
+    ofile_reserved = 7 + len(volset)
 
-    try:
-        query = sess.query(Commonality1)
-        le = query.count()
-        if not le:
-            return
+    FilteredInode, Commonality1 = comm_mappings(fs.id, vol_ids)
+    query = sess.query(Commonality1)
+    le = query.count()
 
-        tt.format(
-            '{elapsed} Partial hash of same-size groups '
-            '{comm1:counter}/{comm1:total}')
+    if le:
+        tt.format('{elapsed} Size group {comm1:counter}/{comm1:total}')
         tt.set_total(comm1=le)
-        for comm1 in query:
-            # True, but might be expensive to compute
-            #assert comm1.inode_count == len(comm1.inodes)
-            space_gain1 += comm1.size * (comm1.inode_count - 1)
-            tt.update(comm1=comm1)
-            for inode in comm1.inodes:
-                # XXX Need to cope with deleted inodes.
-                # We cannot find them in the search-new pass,
-                # not without doing some tracking of directory modifications to
-                # poke updated directories to find removed elements.
+        dedup_tracked1(sess, tt, ofile_reserved, query, fs, skipped)
 
-                # rehash everytime for now
-                # I don't know enough about how inode transaction numbers
-                # are updated (as opposed to extent updates)
-                # to be able to actually cache the result
-                try:
-                    path = lookup_ino_path_one(inode.vol.fd, inode.ino)
-                except IOError as e:
-                    if e.errno != errno.ENOENT:
-                        raise
-                    # We have a stale record for a removed inode
-                    # XXX If an inode number is reused and the second instance
-                    # is below the size cutoff, we won't update the .size
-                    # attribute and we won't get an IOError to notify us
-                    # either.  Inode reuse does happen (with and without
-                    # inode_cache), so this branch isn't enough to rid us of
-                    # all stale entries.  We can also get into trouble with
-                    # regular file inodes being replaced by some other kind of
-                    # inode.
-                    sess.delete(inode)
-                    continue
-                rfile = fopenat(inode.vol.fd, path)
-                inode.mini_hash_from_file(rfile)
+    # Can't call update directly on FilteredInode because it is aliased.
+    sess.execute(
+        Inode.__table__.update().where(
+            Inode.vol_id.in_(vol_ids)
+        ).values(
+            has_updates=False))
 
-        query = list(sess.query(Commonality2))
-        le = len(query)
-        if not le:
-            return
-        tt.format('{elapsed} Extent map {comm2:counter}/{comm2:total}')
-        tt.set_total(comm2=le)
-        for comm2 in query:
+    for inode in skipped:
+        inode.has_updates = True
+    sess.commit()
+
+
+def dedup_tracked1(sess, tt, ofile_reserved, query, fs, skipped):
+    space_gain1 = space_gain2 = space_gain3 = 0
+    ofile_soft, ofile_hard = resource.getrlimit(resource.RLIMIT_OFILE)
+
+    for comm1 in query:
+        space_gain1 += comm1.size * (comm1.inode_count - 1)
+        tt.update(comm1=comm1)
+        for inode in comm1.inodes:
+            # XXX Need to cope with deleted inodes.
+            # We cannot find them in the search-new pass, not without doing
+            # some tracking of directory modifications to poke updated
+            # directories to find removed elements.
+
+            # rehash everytime for now
+            # I don't know enough about how inode transaction numbers are
+            # updated (as opposed to extent updates) to be able to actually
+            # cache the result
+            try:
+                path = lookup_ino_path_one(inode.vol.fd, inode.ino)
+            except IOError as e:
+                if e.errno != errno.ENOENT:
+                    raise
+                # We have a stale record for a removed inode
+                # XXX If an inode number is reused and the second instance
+                # is below the size cutoff, we won't update the .size
+                # attribute and we won't get an IOError to notify us
+                # either.  Inode reuse does happen (with and without
+                # inode_cache), so this branch isn't enough to rid us of
+                # all stale entries.  We can also get into trouble with
+                # regular file inodes being replaced by some other kind of
+                # inode.
+                sess.delete(inode)
+                continue
+            rfile = fopenat(inode.vol.fd, path)
+            inode.mini_hash_from_file(rfile)
+
+        for comm2 in comm1.comm2:
             space_gain2 += comm2.size * (comm2.inode_count - 1)
             tt.update(comm2=comm2)
             for inode in comm2.inodes:
@@ -377,23 +386,10 @@ def dedup_tracked(sess, volset, tt):
                 rfile = fopenat(inode.vol.fd, path)
                 inode.fiemap_hash_from_file(rfile)
 
-        query = list(sess.query(Commonality3))
-        le = len(query)
-        if not le:
-            return
-        tt.format(
-            '{elapsed} Full hash and deduplication '
-            '{comm3:counter}/{comm3:total}')
-        tt.set_total(comm3=le)
-        skipped = []
+            if not comm2.comm3:
+                continue
 
-        ofile_soft, ofile_hard = resource.getrlimit(
-            resource.RLIMIT_OFILE)
-        # 3 for stdio, 3 for sqlite (wal mode), 1 that somehow doesn't
-        # get closed, 1 per volume.
-        ofile_reserved = 7 + len(volset)
-
-        for comm3 in query:
+            comm3, = comm2.comm3
             count3 = comm3.inode_count
             space_gain3 += comm3.size * (count3 - 1)
             tt.update(comm3=comm3)
@@ -517,20 +513,7 @@ def dedup_tracked(sess, volset, tt):
                             sess.add(evti)
                         sess.commit()
 
-        tt.notify(
-            'Potential space gain: pass 1 %d, pass 2 %d pass 3 %d' % (
-                space_gain1, space_gain2, space_gain3))
-    except:
-        # Empty except just so that we can have an else: branch,
-        # when returning without errors.
-        raise
-    else:
-        sess.execute(
-            Inode.__table__.update().where(
-                Inode.vol_id.in_(vol_ids)
-            ).values(
-                has_updates=False))
-        for inode in skipped:
-            inode.has_updates = True
-        sess.commit()
+    tt.notify(
+        'Potential space gain: pass 1 %d, pass 2 %d pass 3 %d' % (
+            space_gain1, space_gain2, space_gain3))
 

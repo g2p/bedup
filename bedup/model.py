@@ -210,8 +210,6 @@ DedupEvent.inode_count = column_property(
 
 
 def comm_mappings(vol_ids):
-    # XXX Is there a way to have a Comm3 -> Comm2 -> Comm1 relationship?
-
     class FilteredInode(Base, InodeProps):
         __table__ = select(
             Inode.__table__.c
@@ -281,6 +279,14 @@ def comm_mappings(vol_ids):
                 FilteredInode.mini_hash == __table__.c.mini_hash),
             foreign_keys=list(FilteredInode.__table__.c))
 
+        comm1 = relationship(
+            Commonality1,
+            backref='comm2',
+            foreign_keys=list(__table__.c),
+            primaryjoin=and_(
+                Commonality1.__table__.c.fs_id == __table__.c.fs_id,
+                Commonality1.__table__.c.size == __table__.c.size))
+
     class Commonality3(Base):
         __table__ = select([
             FilteredInode.fs_id,
@@ -316,8 +322,18 @@ def comm_mappings(vol_ids):
                 FilteredInode.mini_hash == __table__.c.mini_hash),
             foreign_keys=list(FilteredInode.__table__.c))
 
+        comm2 = relationship(
+            Commonality2,
+            backref='comm3',
+            uselist=False,
+            foreign_keys=list(__table__.c),
+            primaryjoin=and_(
+                Commonality2.__table__.c.fs_id == __table__.c.fs_id,
+                Commonality2.__table__.c.size == __table__.c.size,
+                Commonality2.__table__.c.mini_hash == __table__.c.mini_hash))
+
     # Commonality4 would be a crypto hash, but it's not part of this model atm
-    return Commonality1, Commonality2, Commonality3
+    return FilteredInode, Commonality1
 
 META = Base.metadata
 
