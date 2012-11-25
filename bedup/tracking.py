@@ -425,16 +425,28 @@ def dedup_tracked1(sess, tt, ofile_reserved, query, fs, skipped):
                 # We may also want to defragment the source.
                 try:
                     path = lookup_ino_path_one(inode.vol.fd, inode.ino)
+                except IOError as e:
+                    if e.errno == errno.ENOENT:
+                        sess.delete(inode)
+                        continue
+                    raise
+                try:
                     afile = fopenat_rw(inode.vol.fd, path)
                 except IOError as e:
-                    # File contains the image of a running process,
-                    # we can't open it in write mode.
                     if e.errno == errno.ETXTBSY:
+                        # The file contains the image of a running process,
+                        # we can't open it in write mode.
+                        tt.notify('File %r is busy, skipping' % path)
+                        skipped.append(inode)
+                        continue
+                    elif e.errno == errno.EACCES:
+                        # Could be SELinux or immutability
+                        tt.notify('Access denied on %r, skipping' % path)
                         skipped.append(inode)
                         continue
                     elif e.errno == errno.ENOENT:
-                        # Don't delete the inode here, it may still exist at a
-                        # different place (eg because a parent dir moved).
+                        # The file was moved or unlinked by a racing process
+                        tt.notify('File %r may have moved, skipping' % path)
                         skipped.append(inode)
                         continue
                     raise
