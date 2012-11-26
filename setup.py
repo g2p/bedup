@@ -24,7 +24,7 @@ if version_info < (2, 7):
 
 setup(
     name='bedup',
-    version='0.0.5',
+    version='0.0.6',
     author='Gabriel de Perthuis',
     author_email='g2p.code+bedup@gmail.com',
     url='https://github.com/g2p/bedup',
