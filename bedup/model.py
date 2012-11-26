@@ -121,10 +121,11 @@ class VolumePathHistory(Base):
 
 Volume.last_known_mountpoint = column_property(
     select([VolumePathHistory.path])
-    .where(
-        VolumePathHistory.vol_id == Volume.id)
-    .order_by(-VolumePathHistory.id)
-    .label('last_known_mountpoint'))
+        .where(
+            VolumePathHistory.vol_id == Volume.id)
+        .order_by(-VolumePathHistory.id)
+        .label('last_known_mountpoint'),
+    deferred=True)
 
 
 class InodeProps(object):
@@ -169,8 +170,9 @@ class Inode(Base, InodeProps):
 
 Volume.inode_count = column_property(
     select([func.count(Inode.ino)])
-    .where(Inode.vol_id == Volume.id)
-    .label('inode_count'))
+        .where(Inode.vol_id == Volume.id)
+        .label('inode_count'),
+    deferred=True)
 
 
 # The logging classes don't have anything in common (no FKs)

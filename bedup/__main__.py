@@ -95,6 +95,7 @@ def get_session(args):
 
 def vol_cmd(args):
     with closing(TermTemplate()) as tt:
+        # Adds about 1s to cold startup
         sess = get_session(args)
         volumes = set(
             get_vol(sess, volpath, args.size_cutoff) for volpath in args.volume)
