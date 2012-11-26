@@ -92,9 +92,12 @@ class TermTemplate(object):
             self._render(with_newline=True)
         else:
             self._initial_time = monotonic_time()
-        self._template = tuple(_formatter.parse(template))
-        self._time = monotonic_time()
-        self._render(with_newline=False)
+        if template is None:
+            self._template = None
+        else:
+            self._template = tuple(_formatter.parse(template))
+            self._time = monotonic_time()
+            self._render(with_newline=False)
 
     def _write_tty(self, data):
         if self._isatty:
