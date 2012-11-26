@@ -75,6 +75,8 @@ class TermTemplate(object):
         self._kws_totals = {}
         self._stream = sys.stdout
         self._isatty = self._stream.isatty()
+        # knowing this is stdout:
+        self._newline_needs_flush = not self._isatty
         self._wraps = True
 
     def update(self, **kwargs):
@@ -115,7 +117,7 @@ class TermTemplate(object):
             self._write_tty(TTY_DOWRAP)
             self._wraps = True
 
-    def _render(self, with_newline):
+    def _render(self, with_newline, flush_anyway=False):
         if (self._template is not None) and (self._isatty or with_newline):
             self._nowrap()
             self._write_tty(CLEAR_LINE)
@@ -158,14 +160,19 @@ class TermTemplate(object):
             self._dowrap()
             if with_newline:
                 self._stream.write('\n')
+                if self._newline_needs_flush:
+                    self._stream.flush()
             else:
                 self._stream.flush()
+        elif flush_anyway:
+            self._stream.flush()
 
     def notify(self, message):
         self._write_tty(CLEAR_LINE)
         self._dowrap()
         self._stream.write(message + '\n')
-        self._render(with_newline=False)
+        self._render(
+            with_newline=False, flush_anyway=self._newline_needs_flush)
 
     def close(self):
         # Called close so it can be used with contextlib.closing
