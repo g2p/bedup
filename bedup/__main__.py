@@ -109,7 +109,9 @@ def vol_cmd(args):
             set_idle_priority()
             for vol in volumes:
                 if args.flush:
+                    tt.format('{elapsed} Flushing %r' % vol.desc)
                     syncfs(vol.fd)
+                    tt.format(None)
                 # May raise IOError
                 track_updated_files(sess, vol, tt)
                 vols_by_fs[vol.fs].append(vol)
