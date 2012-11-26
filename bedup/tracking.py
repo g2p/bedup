@@ -20,6 +20,7 @@
 import collections
 import errno
 import fcntl
+import gc
 import hashlib
 import os
 import re
@@ -27,6 +28,8 @@ import resource
 import stat
 import subprocess
 import sys
+
+from contextlib import closing
 
 from .btrfs import (
     lookup_ino_path_one, get_fsid, get_root_id,
@@ -340,6 +343,9 @@ def dedup_tracked1(sess, tt, ofile_reserved, query, fs, skipped):
     space_gain1 = space_gain2 = space_gain3 = 0
     ofile_soft, ofile_hard = resource.getrlimit(resource.RLIMIT_OFILE)
 
+    # Hopefully close any files we left around
+    gc.collect()
+
     for comm1 in query:
         if len(sess.identity_map) > 300:
             sess.flush()
@@ -372,8 +378,8 @@ def dedup_tracked1(sess, tt, ofile_reserved, query, fs, skipped):
                 # inode.
                 sess.delete(inode)
                 continue
-            rfile = fopenat(inode.vol.fd, path)
-            inode.mini_hash_from_file(rfile)
+            with closing(fopenat(inode.vol.fd, path)) as rfile:
+                inode.mini_hash_from_file(rfile)
 
         for comm2 in comm1.comm2:
             space_gain2 += comm2.size * (comm2.inode_count - 1)
@@ -386,8 +392,8 @@ def dedup_tracked1(sess, tt, ofile_reserved, query, fs, skipped):
                         raise
                     sess.delete(inode)
                     continue
-                rfile = fopenat(inode.vol.fd, path)
-                inode.fiemap_hash_from_file(rfile)
+                with closing(fopenat(inode.vol.fd, path)) as rfile:
+                    inode.fiemap_hash_from_file(rfile)
 
             if not comm2.comm3:
                 continue
@@ -401,9 +407,6 @@ def dedup_tracked1(sess, tt, ofile_reserved, query, fs, skipped):
             fd_names = {}
             fd_inodes = {}
             by_hash = collections.defaultdict(list)
-
-            # Hopefully close any files we left around
-            import gc; gc.collect()
 
             # XXX I have no justification for doubling count3
             ofile_req = 2 * count3 + ofile_reserved
@@ -533,6 +536,9 @@ def dedup_tracked1(sess, tt, ofile_reserved, query, fs, skipped):
                                 event=evt, ino=inode.ino, vol=inode.vol)
                             sess.add(evti)
                         sess.commit()
+
+            for afile in files:
+                afile.close()
 
     tt.notify(
         'Potential space gain: pass 1 %d, pass 2 %d pass 3 %d' % (
