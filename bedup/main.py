@@ -16,9 +16,18 @@
 # You should have received a copy of the GNU General Public License
 # along with bedup.  If not, see <http://www.gnu.org/licenses/>.
 
-# A workaround for Python2.6
+# This file is a workaround for Python2.6
+# Also has workarounds for -mtrace
 
-from .__main__ import script_main
+import sys
+try:
+    # For -mtrace
+    sys.path.remove('bedup')
+except ValueError:
+    pass
+
+# -mtrace can't use relative imports either
+from bedup.__main__ import script_main
 
 if __name__ == '__main__':
     script_main()
