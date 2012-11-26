@@ -29,7 +29,8 @@ import stat
 import subprocess
 import sys
 
-from contextlib import closing, nested
+from contextlib import closing
+from contextlib2 import ExitStack
 
 from .btrfs import (
     lookup_ino_path_one, get_fsid, get_root_id,
@@ -466,8 +467,12 @@ def dedup_tracked1(sess, tt, ofile_reserved, query, fs, skipped):
                 files.append(afile)
                 fds.append(fd)
 
-            immutability = ImmutableFDs(fds)
-            with nested(*[closing(afile) for afile in files] + [immutability]):
+            with ExitStack() as stack:
+                for afile in files:
+                    stack.enter_context(closing(afile))
+                # Enter this context last
+                immutability = stack.enter_context(ImmutableFDs(fds))
+
                 for afile in files:
                     fd = afile.fileno()
                     inode = fd_inodes[fd]

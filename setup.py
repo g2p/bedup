@@ -16,6 +16,7 @@ install_requires = [
     #'cffi >= 0.4',  # 0.4 is not released and confuses pip
     'pyxdg',
     'sqlalchemy',
+    'contextlib2',
 ]
 
 if version_info < (2, 7):
