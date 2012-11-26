@@ -341,6 +341,9 @@ def dedup_tracked1(sess, tt, ofile_reserved, query, fs, skipped):
     ofile_soft, ofile_hard = resource.getrlimit(resource.RLIMIT_OFILE)
 
     for comm1 in query:
+        if len(sess.identity_map) > 300:
+            sess.flush()
+
         space_gain1 += comm1.size * (comm1.inode_count - 1)
         tt.update(comm1=comm1)
         for inode in comm1.inodes:
