@@ -472,17 +472,23 @@ def dedup_tracked1(sess, tt, ofile_reserved, query, fs, skipped):
                     for buf in iter(lambda: afile.read(BUFSIZE), b''):
                         hasher.update(buf)
 
-                    # Mostly for the sake of correct logging, might also
-                    # prevent some form of security exploitation.
-                    if afile.tell() != comm3.size:
-                        skipped.append(inode)
-                        continue
+                    # Gets rid of a race condition
                     st = os.fstat(fd)
                     if st.st_ino != inode.ino:
                         skipped.append(inode)
                         continue
                     if st.st_dev != inode.vol.st_dev:
                         skipped.append(inode)
+                        continue
+
+                    size = afile.tell()
+                    if size != comm3.size:
+                        if size < inode.vol.size_cutoff:
+                            # if we didn't delete this inode, it would cause
+                            # spurious comm groups in all future invocations.
+                            sess.delete(inode)
+                        else:
+                            skipped.append(inode)
                         continue
 
                     by_hash[hasher.digest()].append(afile)
