@@ -29,7 +29,7 @@ import stat
 import subprocess
 import sys
 
-from contextlib import closing
+from contextlib import closing, nested
 
 from .btrfs import (
     lookup_ino_path_one, get_fsid, get_root_id,
@@ -466,7 +466,8 @@ def dedup_tracked1(sess, tt, ofile_reserved, query, fs, skipped):
                 files.append(afile)
                 fds.append(fd)
 
-            with ImmutableFDs(fds) as immutability:
+            immutability = ImmutableFDs(fds)
+            with nested(*[closing(afile) for afile in files] + [immutability]):
                 for afile in files:
                     fd = afile.fileno()
                     inode = fd_inodes[fd]
@@ -536,9 +537,6 @@ def dedup_tracked1(sess, tt, ofile_reserved, query, fs, skipped):
                                 event=evt, ino=inode.ino, vol=inode.vol)
                             sess.add(evti)
                         sess.commit()
-
-            for afile in files:
-                afile.close()
 
     tt.notify(
         'Potential space gain: pass 1 %d, pass 2 %d pass 3 %d' % (
