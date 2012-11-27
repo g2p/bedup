@@ -82,9 +82,10 @@ struct btrfs_ioctl_search_header {
 
 struct btrfs_ioctl_search_args {
     /* search parameters and state */
-    struct btrfs_ioctl_search_key key;
+    //struct btrfs_ioctl_search_key key;
     /* found items */
-    char buf[];
+    //char buf[];
+    ...;
 };
 
 struct btrfs_data_container {
