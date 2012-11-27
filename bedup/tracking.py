@@ -211,6 +211,7 @@ def track_updated_files(sess, vol, tt):
         % (vol.desc, min_generation, top_generation, vol.size_cutoff))
     if min_generation > top_generation:
         tt.notify('Generation didn\'t change, skipping scan')
+        sess.commit()
         return
     tt.format(
         '{elapsed} Updated {desc:counter} items: '
