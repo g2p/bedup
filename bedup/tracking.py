@@ -349,6 +349,12 @@ def dedup_tracked1(sess, tt, ofile_reserved, query, fs, skipped):
     # Hopefully close any files we left around
     gc.collect()
 
+    # The log can cause frequent commits, we don't mind losing them in
+    # a crash (no need for durability). SQLite is in WAL mode, so this pragma
+    # should disable most commit-time fsync calls without compromising
+    # consistency.
+    sess.execute('PRAGMA synchronous=NORMAL;')
+
     for comm1 in query:
         if len(sess.identity_map) > 300:
             sess.flush()
@@ -549,4 +555,7 @@ def dedup_tracked1(sess, tt, ofile_reserved, query, fs, skipped):
     tt.notify(
         'Potential space gain: pass 1 %d, pass 2 %d pass 3 %d' % (
             space_gain1, space_gain2, space_gain3))
+    # Restore fsync so that the final commit (in dedup_tracked) will be durable.
+    sess.commit()
+    sess.execute('PRAGMA synchronous=FULL;')
 
