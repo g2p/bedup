@@ -27,6 +27,7 @@ import xdg.BaseDirectory  # pyxdg, apt:python-xdg
 
 from contextlib import closing
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import AssertionPool, SingletonThreadPool
 
 from .btrfs import find_new, get_root_generation
 from .dedup import dedup_same, FilesInUseError
@@ -60,7 +61,8 @@ def cmd_find_new(args):
 
 
 def cmd_show_vols(args):
-    sess = get_session(args)
+    Session = get_session_factory(args)
+    sess = Session()
     show_vols(sess)
 
 
@@ -80,23 +82,24 @@ def sql_setup(dbapi_con, con_record):
     assert val == ('wal',), val
 
 
-def get_session(args):
+def get_session_factory(args):
     if args.db_path is None:
         data_dir = xdg.BaseDirectory.save_data_path(APP_NAME)
         args.db_path = os.path.join(data_dir, 'db.sqlite')
     url = sqlalchemy.engine.url.URL('sqlite', database=args.db_path)
-    engine = sqlalchemy.engine.create_engine(url, echo=args.verbose_sql)
+    engine = sqlalchemy.engine.create_engine(
+        url, echo=args.verbose_sql, poolclass=SingletonThreadPool)
     sqlalchemy.event.listen(engine, 'connect', sql_setup)
     Session = sessionmaker(bind=engine)
-    sess = Session()
     META.create_all(engine)
-    return sess
+    return Session
 
 
 def vol_cmd(args):
     with closing(TermTemplate()) as tt:
         # Adds about 1s to cold startup
-        sess = get_session(args)
+        Session = get_session_factory(args)
+        sess = Session()
         volumes = set(
             get_vol(sess, volpath, args.size_cutoff) for volpath in args.volume)
         vols_by_fs = collections.defaultdict(list)
@@ -118,7 +121,7 @@ def vol_cmd(args):
 
         if args.command == 'dedup-vol':
             for volset in vols_by_fs.itervalues():
-                dedup_tracked(sess, volset, tt)
+                dedup_tracked(sess, Session, volset, tt)
 
 
 def cmd_generation(args):

@@ -28,6 +28,7 @@ import resource
 import stat
 import subprocess
 import sys
+import threading
 
 from contextlib import closing
 from contextlib2 import ExitStack
@@ -312,7 +313,39 @@ def track_updated_files(sess, vol, tt):
     sess.commit()
 
 
-def dedup_tracked(sess, volset, tt):
+class LogCommitter(threading.Thread):
+    def __init__(self, Session):
+        super(LogCommitter, self).__init__(name='log-committer')
+        self.sess = Session(autocommit=True)
+        self.evt = threading.Event()
+        self.done = False
+
+
+    def run(self):
+        while True:
+            self.evt.wait()
+            self.evt.clear()
+            if self.sess.new:
+                # Will autocommit
+                self.sess.flush()
+            if self.done:
+                assert not self.sess.new
+                return
+
+    def please_commit(self):
+        self.evt.set()
+        if not self.is_alive():
+            self.start()
+
+    def close(self):
+        if not self.is_alive():
+            return
+        self.done = True
+        self.evt.set()
+        self.join()
+
+
+def dedup_tracked(sess, Session, volset, tt):
     skipped = []
     fs = volset[0].fs
     vol_ids = [vol.id for vol in volset]
@@ -327,9 +360,10 @@ def dedup_tracked(sess, volset, tt):
     le = query.count()
 
     if le:
-        tt.format('{elapsed} Size group {comm1:counter}/{comm1:total}')
-        tt.set_total(comm1=le)
-        dedup_tracked1(sess, tt, ofile_reserved, query, fs, skipped)
+        with closing(LogCommitter(Session)) as lc:
+            tt.format('{elapsed} Size group {comm1:counter}/{comm1:total}')
+            tt.set_total(comm1=le)
+            dedup_tracked1(sess, lc, tt, ofile_reserved, query, fs, skipped)
 
     # Can't call update directly on FilteredInode because it is aliased.
     if False:
@@ -344,9 +378,10 @@ def dedup_tracked(sess, volset, tt):
     sess.commit()
 
 
-def dedup_tracked1(sess, tt, ofile_reserved, query, fs, skipped):
+def dedup_tracked1(sess, log_committer, tt, ofile_reserved, query, fs, skipped):
     space_gain1 = space_gain2 = space_gain3 = 0
     ofile_soft, ofile_hard = resource.getrlimit(resource.RLIMIT_OFILE)
+    log_sess_fs = log_committer.sess.merge(fs)
 
     # Hopefully close any files we left around
     gc.collect()
@@ -544,14 +579,15 @@ def dedup_tracked1(sess, tt, ofile_reserved, query, fs, skipped):
                                     sname, dname))
                     if dfiles_successful:
                         evt = DedupEvent(
-                            fs=fs, item_size=comm3.size, created=system_now())
-                        sess.add(evt)
+                            fs=log_sess_fs, item_size=comm3.size, created=system_now())
+                        log_committer.sess.add(evt)
                         for afile in [sfile] + dfiles_successful:
                             inode = fd_inodes[afile.fileno()]
                             evti = DedupEventInode(
-                                event=evt, ino=inode.ino, vol=inode.vol)
-                            sess.add(evti)
-                        sess.commit()
+                                event=evt, ino=inode.ino,
+                                vol=log_committer.sess.merge(inode.vol))
+                            log_committer.sess.add(evti)
+                        log_committer.please_commit()
 
     tt.format(None)
     tt.notify(
