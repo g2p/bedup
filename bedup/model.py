@@ -237,9 +237,10 @@ def comm_mappings(fs_id, vol_ids):
         )).alias('commonality1')
 
         __mapper_args__ = (
-            dict(primary_key=[
-                __table__.c.size,
-            ]))
+            dict(
+                primary_key=[__table__.c.size],
+                order_by=[-__table__.c.size],
+            ))
 
         inodes = relationship(
             FilteredInode,
