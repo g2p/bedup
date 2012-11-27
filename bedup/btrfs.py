@@ -167,8 +167,8 @@ struct btrfs_file_extent_item {
      * disk space consumed by the extent, checksum blocks are included
      * in these numbers
      */
-    uint64_t disk_bytenr;
-    uint64_t disk_num_bytes;
+    //uint64_t disk_bytenr;
+    //uint64_t disk_num_bytes;
     /*
      * the logical offset in file blocks (no csums)
      * this extent record is for.  This allows a file extent to point
@@ -176,17 +176,17 @@ struct btrfs_file_extent_item {
      * between two snapshots (useful if some bytes in the middle of the
      * extent have changed
      */
-    uint64_t offset;
+    //uint64_t offset;
     /*
      * the logical number of file blocks (no csums included)
      */
-    uint64_t num_bytes;
+    //uint64_t num_bytes;
     ...;
 };
 
 struct btrfs_timespec {
     uint64_t sec;
-    uint32_t nsec;
+    //uint32_t nsec;
     ...;
 };
 
@@ -264,21 +264,21 @@ struct btrfs_root_item {
 
 struct btrfs_inode_ref {
     uint64_t index;
-    uint16_t name_len;
+    //uint16_t name_len;
     /* name goes here */
     ...;
 };
 
 struct btrfs_disk_key {
     uint64_t objectid;
-    uint8_t type;
-    uint64_t offset;
+    //uint8_t type;
+    //uint64_t offset;
     ...;
 };
 
 struct btrfs_dir_item {
     struct btrfs_disk_key location;
-    uint64_t transid;
+    //uint64_t transid;
     uint16_t data_len;
     uint16_t name_len;
     uint8_t type;
