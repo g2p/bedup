@@ -194,6 +194,8 @@ def show_vols(sess):
         sys.stdout.write('<device unavailable>\n  UUID: %s\n' % (fs.uuid,))
         show_fs(fs, {}, '    ', '  ')
 
+    sess.commit()
+
 
 def track_updated_files(sess, vol, tt):
     from .btrfs import ffi, u64_max
