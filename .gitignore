@@ -1,8 +1,0 @@
-*.py[oc]
-/.coverage
-/.tox/
-/MANIFEST
-/bedup.egg-info/
-/bedup/__pycache__/
-/build/
-/dist/
