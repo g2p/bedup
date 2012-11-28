@@ -46,6 +46,8 @@ from .model import (
 
 BUFSIZE = 8192
 
+WINDOW_SIZE = 200
+
 FS_ENCODING = sys.getfilesystemencoding()
 
 # 32MiB, initial scan takes about 12', might gain 15837689948,
@@ -312,6 +314,19 @@ def track_updated_files(sess, vol, tt):
     sess.commit()
 
 
+def windowed_query(query, attr, per):
+    query = query.order_by(-attr)
+    window_start = query.first().size
+
+    while True:
+        li = query.filter(attr <= window_start).limit(per).all()
+        if not li:
+            return
+        for el in li:
+            yield el
+        window_start = el.size - 1
+
+
 def dedup_tracked(sess, volset, tt):
     skipped = []
     fs = volset[0].fs
@@ -329,6 +344,7 @@ def dedup_tracked(sess, volset, tt):
     if le:
         tt.format('{elapsed} Size group {comm1:counter}/{comm1:total}')
         tt.set_total(comm1=le)
+        query = windowed_query(query, attr=Commonality1.size, per=WINDOW_SIZE)
         dedup_tracked1(sess, tt, ofile_reserved, query, fs, skipped)
 
     # Can't call update directly on FilteredInode because it is aliased.
