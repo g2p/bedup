@@ -332,11 +332,12 @@ def dedup_tracked(sess, volset, tt):
         dedup_tracked1(sess, tt, ofile_reserved, query, fs, skipped)
 
     # Can't call update directly on FilteredInode because it is aliased.
-    sess.execute(
-        Inode.__table__.update().where(
-            Inode.vol_id.in_(vol_ids)
-        ).values(
-            has_updates=False))
+    if False:
+        sess.execute(
+            Inode.__table__.update().where(
+                Inode.vol_id.in_(vol_ids)
+            ).values(
+                has_updates=False))
 
     for inode in skipped:
         inode.has_updates = True
@@ -534,7 +535,7 @@ def dedup_tracked1(sess, tt, ofile_reserved, query, fs, skipped):
                             tt.notify('Files differ: %r %r' % (sname, dname))
                             assert False, (sname, dname)
                             continue
-                        if clone_data(dest=dfd, src=sfd, check_first=True):
+                        if True or clone_data(dest=dfd, src=sfd, check_first=True):
                             tt.notify('Deduplicated: %r %r' % (sname, dname))
                             dfiles_successful.append(dfile)
                         else:
