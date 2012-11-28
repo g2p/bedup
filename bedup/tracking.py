@@ -320,7 +320,6 @@ class LogCommitter(threading.Thread):
         self.evt = threading.Event()
         self.done = False
 
-
     def run(self):
         while True:
             self.evt.wait()
@@ -587,7 +586,7 @@ def dedup_tracked1(sess, log_committer, tt, ofile_reserved, query, fs, skipped):
                                 event=evt, ino=inode.ino,
                                 vol=log_committer.sess.merge(inode.vol))
                             log_committer.sess.add(evti)
-                        log_committer.please_commit()
+                        log_committer.sess.flush()
 
     tt.format(None)
     tt.notify(
