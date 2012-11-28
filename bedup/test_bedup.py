@@ -13,18 +13,24 @@ from .btrfs import lookup_ino_paths, BTRFS_FIRST_FREE_OBJECTID
 from . import compat  # monkey-patch check_output in py2.6
 
 # Placate pyflakes
-db = fs = fsimage = sampledata = vol_fd = None
+db = fs = fsimage = sampledata1 = sampledata2 = vol_fd = None
+
+
+def mk_sample_data():
+    sampledata_fd, sampledata = tempfile.mkstemp(suffix='.sample')
+    subprocess.check_call(
+        'dd bs=4096 count=2048 if=/dev/urandom'.split() + ['of=' + sampledata])
+    return sampledata
 
 
 def setup_module():
-    global db, fs, fsimage, sampledata, vol_fd
+    global db, fs, fsimage, sampledata1, sampledata2, vol_fd
     db_fd, db = tempfile.mkstemp(suffix='.sqlite')
     fsimage_fd, fsimage = tempfile.mkstemp(suffix='.btrfs')
-    sampledata_fd, sampledata = tempfile.mkstemp(suffix='.sample')
+    sampledata1 = mk_sample_data()
+    sampledata2 = mk_sample_data()
     fs = tempfile.mkdtemp(suffix='.mnt')
 
-    subprocess.check_call(
-        'dd bs=4096 count=2048 if=/dev/urandom'.split() + ['of=' + sampledata])
     # The older mkfs.btrfs on travis somehow needs 256M;
     # sparse file, costs nothing
     subprocess.check_call('truncate -s256M --'.split() + [fsimage])
@@ -34,8 +40,10 @@ def setup_module():
         del env2['LD_PRELOAD']
     subprocess.check_call('mkfs.btrfs --'.split() + [fsimage], env=env2)
     subprocess.check_call('mount -t btrfs -o loop --'.split() + [fsimage, fs])
-    shutil.copy(sampledata, os.path.join(fs, 'one.sample'))
-    shutil.copy(sampledata, os.path.join(fs, 'two.sample'))
+    shutil.copy(sampledata1, os.path.join(fs, 'one.sample'))
+    shutil.copy(sampledata1, os.path.join(fs, 'two.sample'))
+    shutil.copy(sampledata2, os.path.join(fs, 'three.sample'))
+    shutil.copy(sampledata2, os.path.join(fs, 'four.sample'))
     vol_fd = os.open(fs, os.O_DIRECTORY)
     syncfs(vol_fd)
 
@@ -83,7 +91,8 @@ def stat(fname):
 def test_functional():
     boxed_call('scan-vol --'.split() + [fs])
     with open(fs + '/one.sample', 'r+') as busy_file:
-        boxed_call('dedup-vol --'.split() + [fs])
+        with open(fs + '/three.sample', 'r+') as busy_file:
+            boxed_call('dedup-vol --'.split() + [fs])
     boxed_call('forget-vol --'.split() + [fs])
     boxed_call('scan-vol --size-cutoff=65536 --'.split() + [fs, fs])
     boxed_call('dedup-vol --'.split() + [fs])
@@ -128,7 +137,10 @@ def teardown_module():
     finally:
         os.unlink(db)
         os.unlink(db + '-journal')
+        os.unlink(db + '-wal')
+        os.unlink(db + '-shm')
         os.unlink(fsimage)
-        os.unlink(sampledata)
+        os.unlink(sampledata2)
+        os.unlink(sampledata1)
         os.rmdir(fs)
 
