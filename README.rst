@@ -35,7 +35,7 @@ pull the rest of our Python dependencies:
 
 ::
 
-    pip install --user -e .
+    python setup.py install --user
 
 Option 2: from a PyPI release
 -----------------------------
