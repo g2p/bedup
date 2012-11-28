@@ -31,6 +31,7 @@ import sys
 
 from contextlib import closing
 from contextlib2 import ExitStack
+from sqlalchemy import and_
 
 from .btrfs import (
     lookup_ino_path_one, get_fsid, get_root_id,
@@ -314,17 +315,21 @@ def track_updated_files(sess, vol, tt):
     sess.commit()
 
 
-def windowed_query(query, attr, per):
+def windowed_query(window_start, query, attr, per, clear_updates):
+    # [window_start, window_end] is inclusive at both ends
+    # Figure out how to use attr for property access as well?
     query = query.order_by(-attr)
-    window_start = query.first().size
 
     while True:
         li = query.filter(attr <= window_start).limit(per).all()
         if not li:
+            clear_updates(window_start, 0)
             return
         for el in li:
             yield el
-        window_start = el.size - 1
+        window_end = el.size
+        clear_updates(window_start, window_end)
+        window_start = window_end - 1
 
 
 def dedup_tracked(sess, volset, tt):
@@ -341,21 +346,34 @@ def dedup_tracked(sess, volset, tt):
     query = sess.query(Commonality1)
     le = query.count()
 
+    def clear_updates(window_start, window_end):
+        # Can't call update directly on FilteredInode because it is aliased.
+        sess.execute(
+            Inode.__table__.update().where(and_(
+                Inode.vol_id.in_(vol_ids),
+                window_start >= Inode.size >= window_end
+            )).values(
+                has_updates=False))
+
+        for inode in skipped:
+            inode.has_updates = True
+        sess.commit()
+        # clear the list
+        skipped[:] = []
+
     if le:
         tt.format('{elapsed} Size group {comm1:counter}/{comm1:total}')
         tt.set_total(comm1=le)
-        query = windowed_query(query, attr=Commonality1.size, per=WINDOW_SIZE)
+
+        # This is higher than query.first().size, and will also clear updates
+        # without commonality.
+        window_start = sess.query(Inode).order_by(-Inode.size).first().size
+
+        query = windowed_query(
+            window_start, query, attr=Commonality1.size, per=WINDOW_SIZE,
+            clear_updates=clear_updates)
         dedup_tracked1(sess, tt, ofile_reserved, query, fs, skipped)
 
-    # Can't call update directly on FilteredInode because it is aliased.
-    sess.execute(
-        Inode.__table__.update().where(
-            Inode.vol_id.in_(vol_ids)
-        ).values(
-            has_updates=False))
-
-    for inode in skipped:
-        inode.has_updates = True
     sess.commit()
 
 
