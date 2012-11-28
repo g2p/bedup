@@ -310,6 +310,7 @@ def comm_mappings(fs_id, vol_ids):
 
         inodes = relationship(
             FilteredInode,
+            order_by=FilteredInode.ino,
             primaryjoin=and_(
                 FilteredInode.size == __table__.c.size,
                 FilteredInode.mini_hash == __table__.c.mini_hash),
