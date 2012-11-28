@@ -579,7 +579,8 @@ def find_new(volume_fd, min_generation, results_file, terse, sep):
                 else:
                     results_file.write(
                         'item type %d ino %d len %d gen0 %d gen1 %s%s' % (
-                            sh.type, sh.objectid, sh.len, sh.transid, found_gen, sep))
+                            sh.type, sh.objectid, sh.len, sh.transid,
+                            found_gen, sep))
                 if found_gen < min_generation:
                     continue
             elif sh.type == lib.BTRFS_INODE_ITEM_KEY:
@@ -594,7 +595,8 @@ def find_new(volume_fd, min_generation, results_file, terse, sep):
                 else:
                     results_file.write(
                         'item type %d ino %d len %d gen0 %d gen1 %d%s' % (
-                            sh.type, sh.objectid, sh.len, sh.transid, found_gen, sep))
+                            sh.type, sh.objectid, sh.len, sh.transid,
+                            found_gen, sep))
                 if found_gen < min_generation:
                     continue
             elif sh.type == lib.BTRFS_INODE_REF_KEY:
@@ -608,7 +610,8 @@ def find_new(volume_fd, min_generation, results_file, terse, sep):
                 else:
                     results_file.write(
                         'item type %d ino %d len %d gen0 %d name %s%s' % (
-                            sh.type, sh.objectid, sh.len, sh.transid, name, sep))
+                            sh.type, sh.objectid, sh.len, sh.transid,
+                            name, sep))
             elif (sh.type == lib.BTRFS_DIR_ITEM_KEY
                   or sh.type == lib.BTRFS_DIR_INDEX_KEY):
                 item = ffi.cast(

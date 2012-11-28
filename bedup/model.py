@@ -289,7 +289,8 @@ def comm_mappings(fs_id, vol_ids):
             FilteredInode.size,
             FilteredInode.mini_hash,
             func.count().label('inode_count'),
-            func.count(distinct(FilteredInode.fiemap_hash)).label('fiemap_count'),
+            func.count(
+                distinct(FilteredInode.fiemap_hash)).label('fiemap_count'),
             func.max(FilteredInode.has_updates).label('has_updates'),
         ]).where(and_(
             FilteredInode.mini_hash != None,

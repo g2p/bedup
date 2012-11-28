@@ -98,7 +98,8 @@ def vol_cmd(args):
         # Adds about 1s to cold startup
         sess = get_session(args)
         volumes = set(
-            get_vol(sess, volpath, args.size_cutoff) for volpath in args.volume)
+            get_vol(sess, volpath, args.size_cutoff)
+            for volpath in args.volume)
         vols_by_fs = collections.defaultdict(list)
 
         if args.command == 'forget-vol':

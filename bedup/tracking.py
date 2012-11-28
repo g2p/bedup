@@ -590,7 +590,8 @@ def dedup_tracked1(sess, tt, ofile_reserved, query, fs, skipped):
     tt.notify(
         'Potential space gain: pass 1 %d, pass 2 %d pass 3 %d' % (
             space_gain1, space_gain2, space_gain3))
-    # Restore fsync so that the final commit (in dedup_tracked) will be durable.
+    # Restore fsync so that the final commit (in dedup_tracked)
+    # will be durable.
     sess.commit()
     sess.execute('PRAGMA synchronous=FULL;')
 

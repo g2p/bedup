@@ -51,6 +51,7 @@ lib = ffi.verify('''
 
 _stat_ownership = weakref.WeakKeyDictionary()
 
+
 def fstat_ns(fd):
     stat = ffi.new('struct stat *')
     if lib.fstat(fd, stat) != 0:
