@@ -9,5 +9,5 @@ install:
 
 # PyPy compat: whenever https://launchpad.net/~pypy/+archive/ppa
 # gets a CFFI-compatible build (not in a release as of yet).
-script: tox -e py32,py27,py26
+script: tox -e py33,py32,py27
 
