@@ -22,7 +22,9 @@ import sys
 
 PY3 = sys.version_info[0] >= 3
 
-if PY3:
+
+# CFFI 0.4 reimplements Python 2 buffers on Python 3
+if PY3 and False:
     def buffer_to_bytes(buf):
         return buf.tobytes()
 else:

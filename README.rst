@@ -15,12 +15,11 @@ This should get you started on Debian/Ubuntu:
 Installation
 ============
 
-Install CFFI 0.4. It isn't released yet; this will install a development
-snapshot from bitbucket:
+Install CFFI 0.4.2.
 
 ::
 
-    pip install --user https://bitbucket.org/cffi/cffi/get/69cddb87c25f70c01c1dfc6da27b85f6cade6fd7.tar.gz
+    pip install --user cffi
 
 Option 1 (recommended): from a git clone
 ----------------------------------------

@@ -13,7 +13,7 @@ import bedup.syncfs
 import bedup.time
 
 install_requires = [
-    #'cffi >= 0.4',  # 0.4 is not released and confuses pip
+    'cffi >= 0.4.2',
     'pyxdg',
     'sqlalchemy',
     'contextlib2',
