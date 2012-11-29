@@ -8,10 +8,13 @@ install:
 - sudo aptitude -y install libffi-dev btrfs-tools
 - pip install --use-mirrors tox cffi
 
-# PyPy compat: whenever https://launchpad.net/~pypy/+archive/ppa
-# gets a CFFI-compatible build (not in a release as of yet).
 # tox has some advantages over travis runners:
 # it tests installation from the sdist, which will
 # report things like missing header files.
-script: PIP_USE_MIRRORS=true tox -e py33,py32,py27
+
+# Run the tests a second time without pypy and without py33.
+# Travis doesn't install py33 (promised Real Soon Now(tm), see
+# travis-ci/travis-cookbooks#89), and has PyPy 1.9 which is
+# too old (want a PPA to upgrade).
+script: PIP_USE_MIRRORS=true tox || tox -e py32,py27
 
