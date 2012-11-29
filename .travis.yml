@@ -10,5 +10,8 @@ install:
 
 # PyPy compat: whenever https://launchpad.net/~pypy/+archive/ppa
 # gets a CFFI-compatible build (not in a release as of yet).
+# tox has some advantages over travis runners:
+# it tests installation from the sdist, which will
+# report things like missing header files.
 script: PIP_USE_MIRRORS=true tox -e py33,py32,py27
 
