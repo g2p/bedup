@@ -26,7 +26,9 @@ ffi.cdef('''
     ''')
 lib = ffi.verify('''
     #include <unistd.h>
-    ''', ext_package='bedup')
+    ''',
+    extra_compile_args=['-D_GNU_SOURCE'],
+    ext_package='bedup')
 
 
 def syncfs(fd):
