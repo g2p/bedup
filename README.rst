@@ -79,6 +79,25 @@ Linux 3.6). You can get a list of btrfs subvolumes with:
 The first run can take some time. Subsequent runs will only scan and
 deduplicate the files that have changed in the interval.
 
+Hacking
+=======
+
+::
+
+   pip install --user pytest tox https://github.com/jbalogh/check
+
+To run the tests::
+
+   py.test -s
+
+To test compatibility and packaging as well::
+
+   tox
+
+Run a style check on edited files::
+
+   check.py
+
 Caveats
 =======
 
