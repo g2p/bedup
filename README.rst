@@ -1,5 +1,9 @@
 Deduplication for Btrfs.
 
+bedup looks for new and changed files, making sure that multiple copies of
+identical files share space on disk. It integrates deeply with btrfs so that
+scans are incremental and low-impact.
+
 Requirements
 ============
 

@@ -58,6 +58,8 @@ setup(
         Programming Language :: Python :: Implementation :: PyPy
         License :: OSI Approved :: GNU General Public License (GPL)
         Operating System :: POSIX :: Linux
+        Intended Audience :: System Administrators
+        Intended Audience :: End Users/Desktop
         Topic :: System :: Filesystems
         Topic :: Utilities
         Environment :: Console
