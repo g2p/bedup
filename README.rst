@@ -127,8 +127,9 @@ There is also a small time window when an application will get
 permission errors, if it tries to get write access to a file we have
 already started to deduplicate.
 
-Finally, a system crash at the wrong time could leave some files
-immutable; fix them using the ``chattr -i`` command.
+Finally, a system crash at the wrong time could leave some files immutable.
+They will be reported at the next run; fix them using the ``chattr -i``
+command.
 
 Subvolumes
 ----------
