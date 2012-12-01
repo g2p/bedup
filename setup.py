@@ -13,9 +13,10 @@ import bedup.syncfs
 import bedup.time
 
 install_requires = [
+    'alembic',  # XXX I need Alembic, but not Mako or MarkupSafe.
     'cffi >= 0.4.2',
     'pyxdg',
-    'sqlalchemy',
+    'SQLAlchemy',
     'contextlib2',
 ]
 
