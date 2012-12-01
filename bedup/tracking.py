@@ -161,6 +161,10 @@ def show_fs(fs, root_info, initial_indent, indent):
             sys.stdout.write(
                 initial_indent + indent + 'Last mounted on %s\n'
                 % vol.last_known_mountpoint)
+            if root_info:
+                # The filesystem is available (we could scan the root tree),
+                # so the volume must have been destroyed.
+                sys.stdout.write(initial_indent + indent + 'Deleted\n')
 
 
 def show_vols(sess):
