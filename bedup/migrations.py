@@ -47,6 +47,7 @@ def upgrade_schema(engine, database_exists):
         inspected_rev = 1
         upgrade_with_range(context, inspected_rev, REV)
     else:
+        current_rev = int(current_rev)
         upgrade_with_range(context, current_rev, REV)
     context._update_current_rev(current_rev, REV)
 

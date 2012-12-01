@@ -84,7 +84,11 @@ def get_session(args):
     if args.db_path is None:
         data_dir = xdg.BaseDirectory.save_data_path(APP_NAME)
         args.db_path = os.path.join(data_dir, 'db.sqlite')
-    database_exists = os.path.exists(args.db_path)
+    # The second clause is useful because the integration tests
+    # create an empty database file. Hopefully this doesn't
+    # happen in any other circumstance.
+    database_exists = (
+        os.path.exists(args.db_path) and os.stat(args.db_path).st_size > 0)
     url = sqlalchemy.engine.url.URL('sqlite', database=args.db_path)
     engine = sqlalchemy.engine.create_engine(url, echo=args.verbose_sql)
     sqlalchemy.event.listen(engine, 'connect', sql_setup)
