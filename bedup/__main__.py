@@ -31,7 +31,7 @@ from sqlalchemy.orm import sessionmaker
 from .btrfs import find_new, get_root_generation
 from .dedup import dedup_same, FilesInUseError
 from .ioprio import set_idle_priority
-from .model import META
+from .migrations import upgrade_schema
 from .syncfs import syncfs
 from .termupdates import TermTemplate
 from .tracking import (
@@ -84,12 +84,13 @@ def get_session(args):
     if args.db_path is None:
         data_dir = xdg.BaseDirectory.save_data_path(APP_NAME)
         args.db_path = os.path.join(data_dir, 'db.sqlite')
+    database_exists = os.path.exists(args.db_path)
     url = sqlalchemy.engine.url.URL('sqlite', database=args.db_path)
     engine = sqlalchemy.engine.create_engine(url, echo=args.verbose_sql)
     sqlalchemy.event.listen(engine, 'connect', sql_setup)
+    upgrade_schema(engine, database_exists)
     Session = sessionmaker(bind=engine)
     sess = Session()
-    META.create_all(engine)
     return sess
 
 
