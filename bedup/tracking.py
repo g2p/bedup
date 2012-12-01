@@ -29,6 +29,7 @@ import stat
 import subprocess
 import sys
 
+from collections import namedtuple
 from contextlib import closing
 from contextlib2 import ExitStack
 from sqlalchemy import and_
@@ -59,6 +60,9 @@ DEFAULT_SIZE_CUTOFF = 16 * 1024 ** 2
 # 13'40" (36' with a backup job running in parallel), might gain 26929240347,
 # sqlite takes 758k
 DEFAULT_SIZE_CUTOFF = 8 * 1024 ** 2
+
+
+RootAndMountInfo = namedtuple('RootAndMountInfo', 'path is_frozen mpoints')
 
 
 def get_vol(sess, volpath, size_cutoff):
@@ -138,10 +142,12 @@ def show_fs(fs, root_info, initial_indent, indent):
                 '%d inodes tracked\n' % (vol.inode_count, ))
 
         if vol.root_id in root_info:
-            root_path, mpoints = root_info[vol.root_id]
+            ri = root_info[vol.root_id]
             sys.stdout.write(
-                initial_indent + indent + 'Path %s\n' % root_path)
-            for mpoint in mpoints:
+                initial_indent + indent + 'Path %s\n' % ri.path)
+            if ri.is_frozen:
+                sys.stdout.write(initial_indent + indent + 'Frozen\n')
+            for mpoint in ri.mpoints:
                 sys.stdout.write(
                     initial_indent + indent + 'Mounted on %s\n' % mpoint)
         else:
@@ -153,7 +159,7 @@ def show_fs(fs, root_info, initial_indent, indent):
 def show_vols(sess):
     mpoints_by_dev = parse_btrfs_mountinfo()
 
-    def get_root_info(dev):
+    def get_root_and_mount_info(dev):
         # Tends to be a less descriptive name, so keep the original
         # name blkid gave for printing.
         dev_canonical = os.path.realpath(dev)
@@ -164,7 +170,7 @@ def show_vols(sess):
             # Only if it can be completely safe and read-only.
             return {}
 
-        path_by_root_id = {}
+        root_info = {}
 
         mpoints = collections.defaultdict(list)
         for volpath, mpoint in mpoints_by_dev[dev_canonical]:
@@ -179,14 +185,15 @@ def show_vols(sess):
                     # but try anyway.
                     continue
                 raise
-            if not path_by_root_id:
-                path_by_root_id = read_root_tree(mpoint_fd)
-            assert path_by_root_id[root_id] == volpath
+            if not root_info:
+                root_info = read_root_tree(mpoint_fd)
+            assert root_info[root_id].path == volpath
             mpoints[root_id].append(mpoint)
 
         return dict(
-            (root_id, (path_by_root_id[root_id], mpoints[root_id]))
-            for root_id in path_by_root_id.iterkeys())
+            (root_id, RootAndMountInfo(
+                *root_info[root_id] + (mpoints[root_id],)))
+            for root_id in root_info.iterkeys())
 
     seen_fs_ids = []
     for line in subprocess.check_output(
@@ -197,7 +204,7 @@ def show_vols(sess):
         fs = sess.query(Filesystem).filter_by(uuid=uuid).scalar()
         if fs is not None:
             seen_fs_ids.append(fs.id)
-            root_info = get_root_info(dev)
+            root_info = get_root_and_mount_info(dev)
             show_fs(fs, root_info, '    ', '  ')
 
     query = sess.query(Filesystem)

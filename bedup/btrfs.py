@@ -26,6 +26,7 @@ from .compat import buffer_to_bytes
 from .fiemap import same_extents
 
 from os import getcwd  # XXX
+from collections import namedtuple
 
 
 ffi = cffi.FFI()
@@ -39,6 +40,8 @@ ffi.cdef("""
 #define BTRFS_IOC_FS_INFO ...
 #define BTRFS_IOC_CLONE ...
 #define BTRFS_IOC_DEFRAG ...
+#define BTRFS_IOC_SUBVOL_GETFLAGS ...
+#define BTRFS_IOC_SUBVOL_SETFLAGS ...
 
 #define BTRFS_FSID_SIZE ...
 #define BTRFS_UUID_SIZE ...
@@ -136,6 +139,11 @@ struct btrfs_ioctl_ino_lookup_args {
 #define BTRFS_FIRST_FREE_OBJECTID ...
 #define BTRFS_ROOT_TREE_OBJECTID ...
 #define BTRFS_FS_TREE_OBJECTID ...
+
+// A root_item flag
+// Not to be confused with a similar ioctl flag with a different value
+// XXX The kernel uses cpu_to_le64 to check this flag
+#define BTRFS_ROOT_SUBVOL_RDONLY ...
 
 
 struct btrfs_file_extent_item {
@@ -324,6 +332,8 @@ BTRFS_FIRST_FREE_OBJECTID = lib.BTRFS_FIRST_FREE_OBJECTID
 
 u64_max = ffi.cast('uint64_t', -1)
 
+RootInfo = namedtuple('RootInfo', 'path is_frozen')
+
 
 def name_of_inode_ref(ref):
     namelen = lib.btrfs_stack_inode_ref_name_len(ref)
@@ -465,12 +475,12 @@ def read_root_tree(volume_fd):
 
     sk.tree_id = lib.BTRFS_ROOT_TREE_OBJECTID  # the tree of roots
     sk.max_objectid = u64_max
-    sk.min_type = sk.max_type = lib.BTRFS_ROOT_BACKREF_KEY
+    sk.min_type = lib.BTRFS_ROOT_ITEM_KEY
+    sk.max_type = lib.BTRFS_ROOT_BACKREF_KEY
     sk.max_offset = u64_max
     sk.max_transid = u64_max
 
-    path_by_root_id = {}
-    path_by_root_id[lib.BTRFS_FS_TREE_OBJECTID] = b'/'
+    root_info = {}
 
     while True:
         sk.nr_items = 4096
@@ -485,19 +495,29 @@ def read_root_tree(volume_fd):
             sh = ffi.cast(
                 'struct btrfs_ioctl_search_header *', args.buf + offset)
             offset += ffi.sizeof('struct btrfs_ioctl_search_header') + sh.len
-            if sh.type == lib.BTRFS_ROOT_BACKREF_KEY:
+            if sh.type == lib.BTRFS_ROOT_ITEM_KEY:
+                item = ffi.cast('struct btrfs_root_item *', sh + 1)
+                is_frozen = bool(item.flags & lib.BTRFS_ROOT_SUBVOL_RDONLY)
+                item_root_id = sh.objectid
+                if sh.objectid == lib.BTRFS_FS_TREE_OBJECTID:
+                    root_info[sh.objectid] = RootInfo(b'/', is_frozen)
+            elif sh.type == lib.BTRFS_ROOT_BACKREF_KEY:
                 ref = ffi.cast('struct btrfs_root_ref *', sh + 1)
+                assert sh.objectid != lib.BTRFS_FS_TREE_OBJECTID
                 dir_id = lib.btrfs_stack_root_ref_dirid(ref)
                 root_id = sh.objectid
                 name = name_of_root_ref(ref)
+                # We can use item and is_frozen
+                # from the previous loop iteration
+                assert root_id == item_root_id
                 parent_root_id = sh.offset  # completely obvious, no?
-                # A root_id is also a tree_id.
-                # We can use it as a context for path lookup.
                 parent_path = lookup_ino_path_one(
-                    volume_fd, dir_id, parent_root_id)
+                    volume_fd, dir_id, tree_id=parent_root_id)
                 assert parent_root_id
-                path_by_root_id[root_id] = posixpath.join(
-                        path_by_root_id[parent_root_id], parent_path, name)
+                root_info[root_id] = RootInfo(
+                    posixpath.join(
+                        root_info[parent_root_id].path, parent_path, name),
+                    is_frozen)
             # There's also a uuid we could catch on a sufficiently recent
             # BTRFS_ROOT_ITEM_KEY (v3.6). Since the fs is live careful
             # invalidation (in case it was mounted by an older kernel)
@@ -505,7 +525,7 @@ def read_root_tree(volume_fd):
 
         sk.min_objectid = sh.objectid
         sk.min_offset = sh.offset + 1
-    return path_by_root_id
+    return root_info
 
 
 def get_root_generation(volume_fd):
