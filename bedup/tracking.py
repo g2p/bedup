@@ -129,42 +129,38 @@ def is_subvolume(btrfs_mountpoint_fd):
 
 
 def show_fs(fs, root_info, initial_indent, indent):
+    def print_indented(line, depth):
+        sys.stdout.write(initial_indent + depth * indent + line + '\n')
     vols_by_id = dict((vol.root_id, vol) for vol in fs.volumes)
     for root_id in set(root_info.keys() + vols_by_id.keys()):
-        sys.stdout.write(initial_indent + 'Volume %d\n' % root_id)
+        print_indented('Volume %d' % root_id, 0)
         try:
             vol = vols_by_id[root_id]
         except KeyError:
             pass
         else:
-            sys.stdout.write(
-                initial_indent + indent +
-                'last tracked generation %d size cutoff %d\n'
-                % (vol.last_tracked_generation, vol.size_cutoff))
+            print_indented(
+                'last tracked generation %d size cutoff %d'
+                % (vol.last_tracked_generation, vol.size_cutoff), 1)
 
             if vol.inode_count:
-                sys.stdout.write(
-                    initial_indent + indent +
-                    '%d inodes tracked\n' % (vol.inode_count, ))
+                print_indented('%d inodes tracked' % vol.inode_count, 1)
 
         if root_id in root_info:
             ri = root_info[root_id]
-            sys.stdout.write(
-                initial_indent + indent + 'Path %s\n' % ri.path)
+            print_indented('Path %s' % ri.path, 1)
             if ri.is_frozen:
-                sys.stdout.write(initial_indent + indent + 'Frozen\n')
+                print_indented('Frozen', 1)
             for mpoint in ri.mpoints:
-                sys.stdout.write(
-                    initial_indent + indent + 'Mounted on %s\n' % mpoint)
+                print_indented('Mounted on %s' % mpoint, 1)
         else:
             # We can use vol, since keys come from one or the other
-            sys.stdout.write(
-                initial_indent + indent + 'Last mounted on %s\n'
-                % vol.last_known_mountpoint)
+            print_indented(
+                'Last mounted on %s' % vol.last_known_mountpoint, 1)
             if root_info:
                 # The filesystem is available (we could scan the root tree),
                 # so the volume must have been destroyed.
-                sys.stdout.write(initial_indent + indent + 'Deleted\n')
+                print_indented('Deleted', 1)
 
 
 def show_vols(sess):
