@@ -129,20 +129,26 @@ def is_subvolume(btrfs_mountpoint_fd):
 
 
 def show_fs(fs, root_info, initial_indent, indent):
-    for vol in fs.volumes:
-        sys.stdout.write(
-            initial_indent +
-            'Volume %d last tracked generation %d size cutoff %d\n'
-            % (vol.root_id, vol.last_tracked_generation,
-               vol.size_cutoff))
-
-        if vol.inode_count:
+    vols_by_id = dict((vol.root_id, vol) for vol in fs.volumes)
+    for root_id in set(root_info.keys() + vols_by_id.keys()):
+        sys.stdout.write(initial_indent + 'Volume %d\n' % root_id)
+        try:
+            vol = vols_by_id[root_id]
+        except KeyError:
+            pass
+        else:
             sys.stdout.write(
                 initial_indent + indent +
-                '%d inodes tracked\n' % (vol.inode_count, ))
+                'last tracked generation %d size cutoff %d\n'
+                % (vol.last_tracked_generation, vol.size_cutoff))
 
-        if vol.root_id in root_info:
-            ri = root_info[vol.root_id]
+            if vol.inode_count:
+                sys.stdout.write(
+                    initial_indent + indent +
+                    '%d inodes tracked\n' % (vol.inode_count, ))
+
+        if root_id in root_info:
+            ri = root_info[root_id]
             sys.stdout.write(
                 initial_indent + indent + 'Path %s\n' % ri.path)
             if ri.is_frozen:
@@ -151,6 +157,7 @@ def show_fs(fs, root_info, initial_indent, indent):
                 sys.stdout.write(
                     initial_indent + indent + 'Mounted on %s\n' % mpoint)
         else:
+            # We can use vol, since keys come from one or the other
             sys.stdout.write(
                 initial_indent + indent + 'Last mounted on %s\n'
                 % vol.last_known_mountpoint)
