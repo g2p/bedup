@@ -109,7 +109,7 @@ class VolumePathHistory(Base):
     id = Column(Integer, primary_key=True)
     vol_id, vol = FK(Volume.id, backref='path_history')
     # Paths in the / filesystem.
-    # Paths relative to the root volume is harder (see volumes_from_root_tree).
+    # For paths relative to the root volume, see read_root_tree
     path = Column(Text, index=True, nullable=False)
 
     __table_args__ = (

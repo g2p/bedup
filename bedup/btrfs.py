@@ -19,6 +19,7 @@
 # along with bedup.  If not, see <http://www.gnu.org/licenses/>.
 
 import cffi
+import posixpath
 import uuid
 
 from .compat import buffer_to_bytes
@@ -43,8 +44,8 @@ ffi.cdef("""
 #define BTRFS_UUID_SIZE ...
 
 struct btrfs_ioctl_search_key {
-    /* possibly the root of the search
-     * though the ioctl fd seems to be used as well */
+    /* The search root
+    /* tree_id = 0 will use the subvolume from the ioctl fd */
     uint64_t tree_id;
 
     /* keys returned will be >= min and <= max */
@@ -130,9 +131,11 @@ struct btrfs_ioctl_ino_lookup_args {
 #define BTRFS_DIR_ITEM_KEY ...
 #define BTRFS_DIR_INDEX_KEY ...
 #define BTRFS_ROOT_ITEM_KEY ...
+#define BTRFS_ROOT_BACKREF_KEY ...
 
 #define BTRFS_FIRST_FREE_OBJECTID ...
 #define BTRFS_ROOT_TREE_OBJECTID ...
+#define BTRFS_FS_TREE_OBJECTID ...
 
 
 struct btrfs_file_extent_item {
@@ -269,6 +272,17 @@ struct btrfs_inode_ref {
     ...;
 };
 
+/*
+ * this is used for both forward and backward root refs
+ */
+struct btrfs_root_ref {
+	uint64_t dirid;
+	uint64_t sequence;
+	uint16_t name_len;
+    /* name goes here */
+    ...;
+};
+
 struct btrfs_disk_key {
     uint64_t objectid;
     uint8_t type;
@@ -290,7 +304,9 @@ uint64_t btrfs_stack_inode_generation(struct btrfs_inode_item *s);
 uint64_t btrfs_stack_inode_size(struct btrfs_inode_item *s);
 uint32_t btrfs_stack_inode_mode(struct btrfs_inode_item *s);
 uint64_t btrfs_stack_inode_ref_name_len(struct btrfs_inode_ref *s);
-uint64_t btrfs_stack_dir_name_len(struct btrfs_dir_item *s);
+uint16_t btrfs_stack_root_ref_name_len(struct btrfs_root_ref *s);
+uint64_t btrfs_stack_root_ref_dirid(struct btrfs_root_ref *s);
+uint16_t btrfs_stack_dir_name_len(struct btrfs_dir_item *s);
 uint64_t btrfs_root_generation(struct btrfs_root_item *s);
 """)
 
@@ -311,6 +327,11 @@ u64_max = ffi.cast('uint64_t', -1)
 
 def name_of_inode_ref(ref):
     namelen = lib.btrfs_stack_inode_ref_name_len(ref)
+    return ffi.string(ffi.cast('char*', ref + 1), namelen)
+
+
+def name_of_root_ref(ref):
+    namelen = lib.btrfs_stack_root_ref_name_len(ref)
     return ffi.string(ffi.cast('char*', ref + 1), namelen)
 
 
@@ -419,24 +440,25 @@ def get_root_id(volume_fd):
     return args.treeid
 
 
-def lookup_ino_path_one(volume_fd, ino):
+def lookup_ino_path_one(volume_fd, ino, tree_id=0):
+    # tree_id == 0 means the subvolume in volume_fd
     # Sort of sucks (only gets one backref),
     # but that's sufficient for now; the other option
     # has kernel bugs we can't work around.
     args = ffi.new('struct btrfs_ioctl_ino_lookup_args *')
     args.objectid = ino
+    args.treeid = tree_id
     ioctl_pybug(volume_fd, lib.BTRFS_IOC_INO_LOOKUP, ffi.buffer(args))
     rv = ffi.string(args.name)
     # For some reason the kernel puts a final /
-    assert rv[-1:] == b'/', repr(rv)
-    return rv[:-1]
+    if tree_id == 0:
+        assert rv[-1:] == b'/', repr(rv)
+        return rv[:-1]
+    else:
+        return rv
 
 
-def volumes_from_root_tree(volume_fd):  # pragma: nocover
-    # Requires a scary amount of scanning, not just the root tree,
-    # needs to be combined with some inode resolution on mounted volumes
-    raise NotImplementedError
-
+def read_root_tree(volume_fd):
     args = ffi.new('struct btrfs_ioctl_search_args *')
     args_buffer = ffi.buffer(args)
     sk = args.key
@@ -446,6 +468,9 @@ def volumes_from_root_tree(volume_fd):  # pragma: nocover
     sk.min_type = sk.max_type = lib.BTRFS_ROOT_BACKREF_KEY
     sk.max_offset = u64_max
     sk.max_transid = u64_max
+
+    path_by_root_id = {}
+    path_by_root_id[lib.BTRFS_FS_TREE_OBJECTID] = b'/'
 
     while True:
         sk.nr_items = 4096
@@ -461,9 +486,26 @@ def volumes_from_root_tree(volume_fd):  # pragma: nocover
                 'struct btrfs_ioctl_search_header *', args.buf + offset)
             offset += ffi.sizeof('struct btrfs_ioctl_search_header') + sh.len
             if sh.type == lib.BTRFS_ROOT_BACKREF_KEY:
-                item = ffi.cast('struct btrfs_root_ref *', sh + 1)
+                ref = ffi.cast('struct btrfs_root_ref *', sh + 1)
+                dir_id = lib.btrfs_stack_root_ref_dirid(ref)
+                root_id = sh.objectid
+                name = name_of_root_ref(ref)
+                parent_root_id = sh.offset  # completely obvious, no?
+                # A root_id is also a tree_id.
+                # We can use it as a context for path lookup.
+                parent_path = lookup_ino_path_one(
+                    volume_fd, dir_id, parent_root_id)
+                assert parent_root_id
+                path_by_root_id[root_id] = posixpath.join(
+                        path_by_root_id[parent_root_id], parent_path, name)
+            # There's also a uuid we could catch on a sufficiently recent
+            # BTRFS_ROOT_ITEM_KEY (v3.6). Since the fs is live careful
+            # invalidation (in case it was mounted by an older kernel)
+            # shouldn't be necessary.
 
+        sk.min_objectid = sh.objectid
         sk.min_offset = sh.offset + 1
+    return path_by_root_id
 
 
 def get_root_generation(volume_fd):
@@ -503,10 +545,6 @@ def get_root_generation(volume_fd):
                 'struct btrfs_root_item *', sh + 1)
             max_found = max(max_found, lib.btrfs_root_generation(item))
 
-        if sk.min_type != lib.BTRFS_ROOT_ITEM_KEY:
-            break
-        if sk.min_objectid != treeid:
-            break
         sk.min_offset = sh.offset + 1
 
     assert max_found > 0

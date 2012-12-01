@@ -36,7 +36,7 @@ from sqlalchemy import and_
 from .btrfs import (
     lookup_ino_path_one, get_fsid, get_root_id,
     get_root_generation, clone_data, defragment,
-    BTRFS_FIRST_FREE_OBJECTID)
+    read_root_tree, BTRFS_FIRST_FREE_OBJECTID)
 from .datetime import system_now
 from .dedup import ImmutableFDs, cmp_files
 from .openat import fopenat, fopenat_rw
@@ -124,7 +124,7 @@ def is_subvolume(btrfs_mountpoint_fd):
     return st.st_ino == BTRFS_FIRST_FREE_OBJECTID
 
 
-def show_fs(fs, mpoints_by_root_id, initial_indent, indent):
+def show_fs(fs, root_info, initial_indent, indent):
     for vol in fs.volumes:
         sys.stdout.write(
             initial_indent +
@@ -135,12 +135,13 @@ def show_fs(fs, mpoints_by_root_id, initial_indent, indent):
             initial_indent + indent +
             '%d inodes tracked\n' % (vol.inode_count, ))
 
-        if vol.root_id in mpoints_by_root_id:
-            for (volpath, mpoint) in mpoints_by_root_id[vol.root_id]:
+        if vol.root_id in root_info:
+            root_path, mpoints = root_info[vol.root_id]
+            sys.stdout.write(
+                initial_indent + indent + 'Path %s\n' % root_path)
+            for mpoint in mpoints:
                 sys.stdout.write(
                     initial_indent + indent + 'Mounted on %s\n' % mpoint)
-            # volpath should be the same for all mpoints
-            sys.stdout.write(initial_indent + indent + 'Path %s\n' % volpath)
         else:
             sys.stdout.write(
                 initial_indent + indent + 'Last mounted on %s\n'
@@ -150,33 +151,40 @@ def show_fs(fs, mpoints_by_root_id, initial_indent, indent):
 def show_vols(sess):
     mpoints_by_dev = parse_btrfs_mountinfo()
 
-    def get_subvol_mpoints_by_root_id(dev):
+    def get_root_info(dev):
         # Tends to be a less descriptive name, so keep the original
         # name blkid gave for printing.
         dev_canonical = os.path.realpath(dev)
 
         if dev_canonical not in mpoints_by_dev:
+            # Known to blkid, but not mounted.
+            # TODO: peek with a private mount?
+            # Only if it can be completely safe and read-only.
             return {}
 
-        mpoints_by_root_id = collections.defaultdict(list)
+        path_by_root_id = {}
+
+        mpoints = collections.defaultdict(list)
         for volpath, mpoint in mpoints_by_dev[dev_canonical]:
             mpoint_fd = os.open(mpoint, os.O_DIRECTORY)
             if not is_subvolume(mpoint_fd):
                 continue
             try:
                 root_id = get_root_id(mpoint_fd)
-                # Would help us show the volume path, by:
-                # 1. finding the volume in the tree of tree roots
-                # 2. finding the backref in the volume it points to
-                # Part 2. would require making our own private
-                # subvol=/ mount, existing mounts may not be suitable.
-                #volumes_from_root_tree(mpoint_fd)
             except IOError as e:
                 if e.errno == errno.EPERM:
-                    break
+                    # Unlikely to work on the next loop iteration,
+                    # but try anyway.
+                    continue
                 raise
-            mpoints_by_root_id[root_id].append((volpath, mpoint))
-        return mpoints_by_root_id
+            if not path_by_root_id:
+                path_by_root_id = read_root_tree(mpoint_fd)
+            assert path_by_root_id[root_id] == volpath
+            mpoints[root_id].append(mpoint)
+
+        return dict(
+            (root_id, (path_by_root_id[root_id], mpoints[root_id]))
+            for root_id in path_by_root_id.iterkeys())
 
     seen_fs_ids = []
     for line in subprocess.check_output(
@@ -187,8 +195,8 @@ def show_vols(sess):
         fs = sess.query(Filesystem).filter_by(uuid=uuid).scalar()
         if fs is not None:
             seen_fs_ids.append(fs.id)
-            mpoints_by_root_id = get_subvol_mpoints_by_root_id(dev)
-            show_fs(fs, mpoints_by_root_id, '    ', '  ')
+            root_info = get_root_info(dev)
+            show_fs(fs, root_info, '    ', '  ')
 
     query = sess.query(Filesystem)
     if seen_fs_ids:
