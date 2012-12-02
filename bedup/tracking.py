@@ -258,14 +258,14 @@ def show_vols(whole_fs):
     for (uuid, di) in whole_fs.device_info.iteritems():
         sys.stdout.write('Label: %s UUID: %s\n' % (di.label, uuid))
         for dev in di.devices:
-            sys.stdout.write('  Device: %s\n' % (dev, ))
+            print_indented('Device: %s' % (dev, ), 0)
         fs = whole_fs.get_fs(uuid)
         seen_fs_ids.append(fs.id)
         whole_fs.ensure_mount_info(fs)
         show_fs(fs, print_indented)
 
     for fs in whole_fs.iter_other_fs(seen_fs_ids):
-        sys.stdout.write('<no device available>\n  UUID: %s\n' % (fs.uuid,))
+        sys.stdout.write('UUID: %s\n  <no device available>\n' % (fs.uuid,))
         show_fs(fs, print_indented)
 
     whole_fs.sess.commit()
