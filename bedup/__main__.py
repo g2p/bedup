@@ -158,6 +158,43 @@ def cmd_generation(args):
     print('%d' % generation)
 
 
+def user_confirmation(message, default):
+    # default='n' would be an easy mistake to make
+    assert default is bool(default)
+
+    yes_values = 'y yes'.split()
+    no_values = 'n no'.split()
+    if default:
+        choices = 'Y/n'
+        yes_values.append('')
+    else:
+        choices = 'y/N'
+        no_values.append('')
+
+    while True:
+        choice = raw_input("%s (%s) " % (message, choices)).lower().strip()
+        if choice in yes_values:
+            return True
+        elif choice in no_values:
+            return False
+
+
+def cmd_forget_fs(args):
+    sess = get_session(args)
+    whole_fs = WholeFS(sess)
+    filesystems = [whole_fs.get_fs(uuid) for uuid in args.uuid]
+    for fs in filesystems:
+        desc = fs.uuid
+        if not user_confirmation('Wipe all data about fs %s?' % desc, False):
+            continue
+        for vol in fs.volumes:
+            # A lot of things will cascade
+            sess.delete(vol)
+        sess.delete(fs)
+        sess.commit()
+        print('Wiped all data about %s' % desc)
+
+
 def sql_flags(parser):
     parser.add_argument(
         '--db-path', dest='db_path',
@@ -212,6 +249,13 @@ Reset tracking data for the listed volumes. Mostly useful for testing.""")
 Shows known volumes.""")
     sp_show_vols.set_defaults(action=cmd_show_vols)
     sql_flags(sp_show_vols)
+
+    sp_forget_fs = commands.add_parser('forget-fs', description="""
+Wipe all data for the listed filesystems.
+Useful if the filesystems don't exist anymore.""")
+    sp_forget_fs.set_defaults(action=cmd_forget_fs)
+    sp_forget_fs.add_argument('uuid', nargs='+', help='btrfs filesystem uuids')
+    sql_flags(sp_forget_fs)
 
     sp_dedup_files = commands.add_parser(
         'dedup-files', description="""

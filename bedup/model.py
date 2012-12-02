@@ -16,7 +16,7 @@
 # You should have received a copy of the GNU General Public License
 # along with bedup.  If not, see <http://www.gnu.org/licenses/>.
 
-from sqlalchemy.orm import relationship, column_property
+from sqlalchemy.orm import relationship, column_property, backref as backref_
 from sqlalchemy.orm.exc import NoResultFound
 from sqlalchemy.sql import and_, select, func, literal_column, distinct
 from sqlalchemy.ext.declarative import declarative_base, declared_attr
@@ -39,8 +39,14 @@ def parent_entity(cattr):
         return cattr.parententity
 
 
-def FK(cattr, primary_key=False, backref=None, nullable=False):
+def FK(cattr, primary_key=False, backref=None, nullable=False, cascade=False):
+    # cascade=False will select the sqla default (save-update, merge)
     col, = cattr.property.columns
+    if backref is None:
+        assert cascade is False
+    else:
+        backref = backref_(backref, cascade=cascade)
+
     return (
         Column(
             col.type, ForeignKey(col),
@@ -107,7 +113,8 @@ class Volume(Base):
 
 class VolumePathHistory(Base):
     id = Column(Integer, primary_key=True)
-    vol_id, vol = FK(Volume.id, backref='path_history')
+    vol_id, vol = FK(
+        Volume.id, backref='path_history', cascade='all, delete-orphan')
     # Paths in the / filesystem.
     # For paths relative to the root volume, see read_root_tree
     path = Column(Text, index=True, nullable=False)
@@ -149,7 +156,9 @@ class InodeProps(object):
 
 
 class Inode(Base, InodeProps):
-    vol_id, vol = FK(Volume.id, primary_key=True)
+    vol_id, vol = FK(
+        Volume.id, primary_key=True, backref='inodes',
+        cascade='all, delete-orphan')
     # inode number
     ino = Column(Integer, primary_key=True)
     # We learn the size at the same time as the inode number,
@@ -182,7 +191,8 @@ Volume.inode_count = column_property(
 # We do allow FKs to volumes; those aren't meant to be removed.
 class DedupEvent(Base):
     id = Column(Integer, primary_key=True)
-    fs_id, fs = FK(Filesystem.id)
+    fs_id, fs = FK(
+        Filesystem.id, backref='dedup_events', cascade='all, delete-orphan')
 
     item_size = Column(Integer, index=True, nullable=False)
     created = Column(UTCDateTime, index=True, nullable=False)
@@ -198,9 +208,11 @@ class DedupEvent(Base):
 
 class DedupEventInode(Base):
     id = Column(Integer, primary_key=True)
-    event_id, event = FK(DedupEvent.id)
+    event_id, event = FK(
+        DedupEvent.id, backref='inodes', cascade='all, delete-orphan')
     ino = Column(Integer, index=True, nullable=False)
-    vol_id, vol = FK(Volume.id)
+    vol_id, vol = FK(
+        Volume.id, backref='dedup_event_inodes', cascade='all, delete-orphan')
 
     __table_args__ = (
         dict(
