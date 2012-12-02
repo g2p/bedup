@@ -5,6 +5,8 @@ install:
 - lsb_release -a
 - pypy --version
 - sudo touch /etc/suid-debug
+# Travis doesn't install py33 (promised Real Soon Now(tm), see
+# travis-ci/travis-cookbooks#89).
 - sudo aptitude -y install libffi-dev btrfs-tools python3.3-dev
 - pip install --use-mirrors tox cffi
 
@@ -12,9 +14,10 @@ install:
 # it tests installation from the sdist, which will
 # report things like missing header files.
 
-# Run the tests a second time without pypy and without py33.
-# Travis doesn't install py33 (promised Real Soon Now(tm), see
-# travis-ci/travis-cookbooks#89), and has PyPy 1.9 which is
-# too old (want a PPA to upgrade).
-script: PIP_USE_MIRRORS=true tox || tox -e py32,py27
+# Ignore PyPy failures on Travis.
+# Travis has PyPy 1.9 which is too old (want a PPA to upgrade).
+script:
+- export PIP_USE_MIRRORS=true
+- tox -e pypy || true
+- tox -e py33,py32,py27
 
