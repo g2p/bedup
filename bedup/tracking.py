@@ -255,6 +255,10 @@ def show_vols(whole_fs):
     def print_indented(line, depth):
         sys.stdout.write(initial_indent + depth * indent + line + '\n')
 
+    # Without root, we are mostly limited to what's stored in the db.
+    # Can't link volume ids to mountpoints, can't list subvolumes.
+    # There's just blkid sharing blkid.tab, and the kernel with mountinfo.
+    # Print a warning?
     for (uuid, di) in whole_fs.device_info.iteritems():
         sys.stdout.write('Label: %s UUID: %s\n' % (di.label, uuid))
         for dev in di.devices:
