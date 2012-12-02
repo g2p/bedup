@@ -53,7 +53,7 @@ Running
 
 ::
 
-    python -m bedup
+    python -m bedup -h
 
 You'll see a list of supported commands.
 

@@ -100,6 +100,8 @@ def get_session(args):
 
 
 def vol_cmd(args):
+    if args.command == 'dedup-vol':
+        args.command = 'dedup'
     with closing(TermTemplate()) as tt:
         # Adds about 1s to cold startup
         sess = get_session(args)
@@ -228,62 +230,44 @@ def scan_flags(parser):
 
 def main(argv):
     parser = argparse.ArgumentParser(prog='python -m bedup')
-    commands = parser.add_subparsers(dest='command')
+    commands = parser.add_subparsers(dest='command', metavar='command')
 
-    sp_scan_vol = commands.add_parser('scan', description="""
-Scans listed volumes to keep track of potentially duplicated files.""")
+    sp_scan_vol = commands.add_parser(
+        'scan', help='Scan', description="""
+Scans volumes to keep track of potentially duplicated files.""")
     sp_scan_vol.set_defaults(action=vol_cmd)
     scan_flags(sp_scan_vol)
 
-    sp_dedup_vol = commands.add_parser('dedup', description="""
+    # In Python 3.2+ we can add aliases here.
+    # Hidden aliases doesn't seem supported though.
+    sp_dedup_vol = commands.add_parser(
+        'dedup', help='Scan and deduplicate', description="""
 Runs scan, then deduplicates identical files.""")
     sp_dedup_vol.set_defaults(action=vol_cmd)
     scan_flags(sp_dedup_vol)
 
-    sp_reset_vol = commands.add_parser('reset', description="""
+    # An alias so as not to break btrfs-time-machine.
+    # No help; which should make it (mostly) invisible.
+    sp_dedup_vol_compat = commands.add_parser(
+        'dedup-vol', description="""
+A deprecated alias for the 'dedup' command.""")
+    sp_dedup_vol_compat.set_defaults(action=vol_cmd)
+    scan_flags(sp_dedup_vol_compat)
+
+    sp_reset_vol = commands.add_parser(
+        'reset', help='Reset tracking metadata', description="""
 Reset tracking data for the listed volumes. Mostly useful for testing.""")
     sp_reset_vol.set_defaults(action=vol_cmd)
     vol_flags(sp_reset_vol)
 
-    sp_show_vols = commands.add_parser('show-vols', description="""
+    sp_show_vols = commands.add_parser(
+        'show-vols', help='Show metadata overview', description="""
 Shows known volumes.""")
     sp_show_vols.set_defaults(action=cmd_show_vols)
     sql_flags(sp_show_vols)
 
-    sp_forget_fs = commands.add_parser('forget-fs', description="""
-Wipe all data for the listed filesystems.
-Useful if the filesystems don't exist anymore.""")
-    sp_forget_fs.set_defaults(action=cmd_forget_fs)
-    sp_forget_fs.add_argument('uuid', nargs='+', help='btrfs filesystem uuids')
-    sql_flags(sp_forget_fs)
-
-    sp_dedup_files = commands.add_parser(
-        'dedup-files', description="""
-Freezes files, checks them for being identical,
-and projects the extents of the first file onto the other files.
-
-The effects are visible with filefrag -v (apt:e2fsprogs),
-which displays the extent map of files.
-        """.strip())
-    sp_dedup_files.set_defaults(action=cmd_dedup_files)
-    sp_dedup_files.add_argument('source', metavar='SRC', help='source file')
-    sp_dedup_files.add_argument(
-        'dests', metavar='DEST', nargs='+', help='dest files')
-    sp_dedup_files.add_argument(
-        '--defragment', action='store_true',
-        help='defragment the source file first')
-
-    sp_generation = commands.add_parser(
-        'generation', description="""
-Show the btrfs generation of VOLUME""")
-    sp_generation.set_defaults(action=cmd_generation)
-    sp_generation.add_argument('volume', help='btrfs volume')
-    sp_generation.add_argument(
-        '--flush', action='store_true', dest='flush',
-        help='Flush outstanding data using syncfs before lookup')
-
     sp_find_new = commands.add_parser(
-        'find-new', description="""
+        'find-new', help='List changed files', description="""
 lists changes to volume since generation
 
 This is a reimplementation of btrfs find-new,
@@ -298,6 +282,39 @@ modified to include directories as well.""")
     sp_find_new.add_argument(
         'generation', type=int, nargs='?', default=0,
         help='only show items modified at generation or a newer transaction')
+
+    sp_forget_fs = commands.add_parser(
+        'forget-fs', help='Wipe all metadata', description="""
+Wipe all metadata for the listed filesystems.
+Useful if the filesystems don't exist anymore.""")
+    sp_forget_fs.set_defaults(action=cmd_forget_fs)
+    sp_forget_fs.add_argument('uuid', nargs='+', help='btrfs filesystem uuids')
+    sql_flags(sp_forget_fs)
+
+    sp_dedup_files = commands.add_parser(
+        'dedup-files', help='Deduplicate listed', description="""
+Freezes listed files, checks them for being identical,
+and projects the extents of the first file onto the other files.
+
+The effects are visible with filefrag -v (apt:e2fsprogs),
+which displays the extent map of files.
+        """.strip())
+    sp_dedup_files.set_defaults(action=cmd_dedup_files)
+    sp_dedup_files.add_argument('source', metavar='SRC', help='source file')
+    sp_dedup_files.add_argument(
+        'dests', metavar='DEST', nargs='+', help='dest files')
+    sp_dedup_files.add_argument(
+        '--defragment', action='store_true',
+        help='defragment the source file first')
+
+    sp_generation = commands.add_parser(
+        'generation', help='Display volume generation', description="""
+Display the btrfs generation of VOLUME""")
+    sp_generation.set_defaults(action=cmd_generation)
+    sp_generation.add_argument('volume', help='btrfs volume')
+    sp_generation.add_argument(
+        '--flush', action='store_true', dest='flush',
+        help='Flush outstanding data using syncfs before lookup')
 
     args = parser.parse_args(argv[1:])
     return args.action(args)
