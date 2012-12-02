@@ -228,8 +228,15 @@ def scan_flags(parser):
         help='Flush outstanding data using syncfs before scanning volumes')
 
 
+def is_in_path(cmd):
+    # See shutil.which in Python 3.3
+    return any(
+        os.path.exists(el + '/' + cmd) for el in os.environ['PATH'].split(':'))
+
+
 def main(argv):
-    parser = argparse.ArgumentParser(prog='python -m bedup')
+    progname = 'bedup' if is_in_path('bedup') else 'python -m bedup'
+    parser = argparse.ArgumentParser(prog=progname)
     commands = parser.add_subparsers(dest='command', metavar='command')
 
     sp_scan_vol = commands.add_parser(
