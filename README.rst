@@ -40,6 +40,7 @@ pull the rest of our Python dependencies:
 ::
 
     python setup.py install --user
+    cp -lt ~/bin ~/.local/bin/bedup
 
 Option 2: from a PyPI release
 -----------------------------
@@ -47,6 +48,7 @@ Option 2: from a PyPI release
 ::
 
     pip install --user bedup
+    cp -lt ~/bin ~/.local/bin/bedup
 
 Running
 =======
