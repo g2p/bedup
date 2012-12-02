@@ -78,6 +78,7 @@ class WholeFS(object):
         if not hasattr(fs, 'root_info'):
             fs.root_info = None
             fs.mpoints = None
+            fs.available_paths = None
         else:
             assert hasattr(fs, 'mpoints')
         if uuid in self.device_info:
@@ -190,45 +191,59 @@ class WholeFS(object):
                 loaded.add(vol)
         return loaded
 
-    def _load_visible_vols(
-        self, fs, start_paths, tt, size_cutoff, include_frozen_if_listed
-    ):
+    def _iter_subvols(self, fs, start_root_ids):
         child_id_map = collections.defaultdict(list)
-
-        # Use sets, there may be repetitions under multiple mpoints
-        frozen_skipped = set()
-        loaded = set()
 
         for root_id, ri in fs.root_info.iteritems():
             if ri.parent_root_id is not None:
                 child_id_map[ri.parent_root_id].append(root_id)
 
-        def _load_children(start_fd, start_fspath, start_intpath, root_id):
-            if fs.root_info[root_id].is_frozen:
-                frozen_skipped.add(root_id)
+        def _iter_children(root_id, top_level):
+            yield (root_id, fs.root_info[root_id], top_level)
+            for child_id in child_id_map[root_id]:
+                for item in _iter_children(child_id, False):
+                    yield item
+
+        for root_id in start_root_ids:
+            for item in _iter_children(root_id, True):
+                yield item
+
+
+    def _load_visible_vols(
+        self, fs, start_paths, tt, size_cutoff, include_frozen_if_listed
+    ):
+        # Use sets, there may be repetitions under multiple mpoints
+        frozen_skipped = set()
+        loaded = set()
+
+        start_vols0 = set(
+            self.get_vol(start_fspath, size_cutoff)
+            for start_fspath in start_paths)
+        start_vols = dict((vol.root_id, vol) for vol in start_vols0)
+
+        for (root_id, ri, top_level) in self._iter_subvols(fs, start_vols):
+            if top_level:
+                start_vol = start_vols[root_id]
+                start_fspath = start_vol.desc
+                if ri.is_frozen:
+                    if include_frozen_if_listed:
+                        loaded.add(start_vol)
+                    else:
+                        frozen_skipped.add(start_vol.root_id)
+                start_intpath = ri.path
+                # relpath is more predictable with absolute paths;
+                # otherwise it relies on getcwd (via abspath)
+                assert os.path.isabs(start_intpath)
             else:
-                relpath = os.path.relpath(
-                    fs.root_info[root_id].path, start_intpath)
-                # XXX start_fd would be more reliable here;
+                if ri.is_frozen:
+                    frozen_skipped.add(root_id)
+                    continue
+                relpath = os.path.relpath(ri.path, start_intpath)
+                # XXX start_vol.fd would be more reliable here;
                 # probably requires Python 3.3 for relative open.
                 vol = self.get_vol(
                     os.path.join(start_fspath, relpath), size_cutoff)
                 loaded.add(vol)
-            for child_id in child_id_map[root_id]:
-                _load_children(start_fd, start_fspath, start_intpath, child_id)
-
-        for start_fspath in start_paths:
-            vol = self.get_vol(start_fspath, size_cutoff)
-            ri = fs.root_info[vol.root_id]
-            if ri.is_frozen and include_frozen_if_listed:
-                loaded.add(vol)
-            start_intpath = ri.path
-            # relpath is more predictable with absolute paths;
-            # otherwise it relies on getcwd (via abspath)
-            assert os.path.isabs(start_intpath)
-            _load_children(vol.fd, start_fspath, start_intpath, vol.root_id)
-            if ri.is_frozen and include_frozen_if_listed:
-                frozen_skipped.remove(vol.root_id)
 
         if frozen_skipped:
             tt.notify(
@@ -244,6 +259,27 @@ class WholeFS(object):
         for dev in self.device_info[fs.uuid].devices:
             self._read_mount_info(fs, dev, mpoints)
         fs.mpoints = dict(mpoints)
+
+    def ensure_available_paths(self, fs):
+        if fs.available_paths is not None:
+            return
+        self.ensure_mount_info(fs)
+        if not fs.root_info:
+            return
+        ap = collections.defaultdict(set)
+        for (root_id, ri, top_level) in self._iter_subvols(fs, fs.mpoints):
+            if top_level:
+                start_mpoints = fs.mpoints[root_id]
+                ap[root_id].update(start_mpoints)
+                start_intpath = ri.path
+                # relpath is more predictable with absolute paths;
+                # otherwise it relies on getcwd (via abspath)
+                assert os.path.isabs(start_intpath)
+            else:
+                relpath = os.path.relpath(ri.path, start_intpath)
+                ap[root_id].update(
+                    os.path.join(smp, relpath) for smp in start_mpoints)
+        fs.available_paths = dict(ap)
 
     def _read_mount_info(self, fs, dev, mpoints):
         # Tends to be a less descriptive name, so keep the original
@@ -316,16 +352,17 @@ def show_fs(fs, print_indented):
 
         if fs.root_info and root_id in fs.root_info:
             ri = fs.root_info[root_id]
-            print_indented('Path %s' % ri.path, 1)
+            if root_id in fs.available_paths:
+                for apath in fs.available_paths[root_id]:
+                    print_indented('Visible at %s' % apath, 1)
+            else:
+                print_indented('Internal path %s' % ri.path, 1)
             if ri.is_frozen:
                 print_indented('Frozen', 1)
-            if root_id in fs.mpoints:
-                for mpoint in fs.mpoints[root_id]:
-                    print_indented('Mounted on %s' % mpoint, 1)
         else:
             # We can use vol, since keys come from one or the other
             print_indented(
-                'Last mounted on %s' % vol.last_known_mountpoint, 1)
+                'Last seen at %s' % vol.last_known_mountpoint, 1)
             if fs.root_info:
                 # The filesystem is available (we could scan the root tree),
                 # so the volume must have been destroyed.
@@ -349,7 +386,7 @@ def show_vols(whole_fs):
             print_indented('Device: %s' % (dev, ), 0)
         fs = whole_fs.get_fs(uuid)
         seen_fs_ids.append(fs.id)
-        whole_fs.ensure_mount_info(fs)
+        whole_fs.ensure_available_paths(fs)
         show_fs(fs, print_indented)
 
     for fs in whole_fs.iter_other_fs(seen_fs_ids):
