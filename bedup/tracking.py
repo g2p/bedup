@@ -336,19 +336,28 @@ def show_fs(fs, print_indented):
         root_ids = set(fs.root_info.keys() + vols_by_id.keys())
     else:
         root_ids = vols_by_id.iterkeys()
-    for root_id in root_ids:
-        print_indented('Volume %d' % root_id, 0)
+    for root_id in sorted(root_ids):
+        flags = ''
+        if fs.root_info:
+            if root_id not in fs.root_info:
+                # The filesystem is available (we could scan the root tree),
+                # so the volume must have been destroyed.
+                flags = ' (deleted)'
+            elif fs.root_info[root_id].is_frozen:
+                flags = ' (frozen)'
+
+        print_indented('Volume %d%s' % (root_id, flags), 0)
         try:
             vol = vols_by_id[root_id]
         except KeyError:
             pass
         else:
-            print_indented(
-                'last tracked generation %d size cutoff %d'
-                % (vol.last_tracked_generation, vol.size_cutoff), 1)
-
             if vol.inode_count:
-                print_indented('%d inodes tracked' % vol.inode_count, 1)
+                print_indented(
+                    'As of generation %d, '
+                    'tracking %d inodes of size at least %d'
+                    % (vol.last_tracked_generation, vol.inode_count,
+                       vol.size_cutoff), 1)
 
         if fs.root_info and root_id in fs.root_info:
             ri = fs.root_info[root_id]
@@ -357,16 +366,10 @@ def show_fs(fs, print_indented):
                     print_indented('Visible at %s' % apath, 1)
             else:
                 print_indented('Internal path %s' % ri.path, 1)
-            if ri.is_frozen:
-                print_indented('Frozen', 1)
         else:
             # We can use vol, since keys come from one or the other
             print_indented(
                 'Last seen at %s' % vol.last_known_mountpoint, 1)
-            if fs.root_info:
-                # The filesystem is available (we could scan the root tree),
-                # so the volume must have been destroyed.
-                print_indented('Deleted', 1)
 
 
 def show_vols(whole_fs):
