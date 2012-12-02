@@ -5,7 +5,7 @@ install:
 - lsb_release -a
 - pypy --version
 - sudo touch /etc/suid-debug
-- sudo aptitude -y install libffi-dev btrfs-tools
+- sudo aptitude -y install libffi-dev btrfs-tools python3.3-dev
 - pip install --use-mirrors tox cffi
 
 # tox has some advantages over travis runners:
