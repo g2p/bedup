@@ -38,7 +38,8 @@ def setup_module():
     env2 = dict(os.environ)
     if 'LD_PRELOAD' in env2 and 'libefence.so' in env2['LD_PRELOAD']:
         del env2['LD_PRELOAD']
-    subprocess.check_call('mkfs.btrfs --'.split() + [fsimage], env=env2)
+    subprocess.check_call(
+        'mkfs.btrfs -LBedupTest --'.split() + [fsimage], env=env2)
     subprocess.check_call('mount -t btrfs -o loop --'.split() + [fsimage, fs])
     shutil.copy(sampledata1, os.path.join(fs, 'one.sample'))
     shutil.copy(sampledata1, os.path.join(fs, 'two.sample'))
