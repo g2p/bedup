@@ -35,7 +35,7 @@ from .migrations import upgrade_schema
 from .syncfs import syncfs
 from .termupdates import TermTemplate
 from .tracking import (
-    show_vols, get_vol, track_updated_files, dedup_tracked, forget_vol)
+    show_vols, track_updated_files, dedup_tracked, forget_vol, WholeFS)
 
 
 APP_NAME = 'bedup'
@@ -61,7 +61,8 @@ def cmd_find_new(args):
 
 def cmd_show_vols(args):
     sess = get_session(args)
-    show_vols(sess)
+    whole_fs = WholeFS(sess)
+    show_vols(whole_fs)
 
 
 def sql_setup(dbapi_con, con_record):
@@ -102,8 +103,9 @@ def vol_cmd(args):
     with closing(TermTemplate()) as tt:
         # Adds about 1s to cold startup
         sess = get_session(args)
+        whole_fs = WholeFS(sess)
         volumes = set(
-            get_vol(sess, volpath, args.size_cutoff)
+            whole_fs.get_vol(volpath, args.size_cutoff)
             for volpath in args.volume)
         vols_by_fs = collections.defaultdict(list)
 

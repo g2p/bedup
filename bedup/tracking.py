@@ -62,37 +62,135 @@ DEFAULT_SIZE_CUTOFF = 16 * 1024 ** 2
 DEFAULT_SIZE_CUTOFF = 8 * 1024 ** 2
 
 
-RootAndMountInfo = namedtuple('RootAndMountInfo', 'path is_frozen mpoints')
+DeviceInfo = namedtuple('DeviceInfo', 'label devices')
 
 
-def get_vol(sess, volpath, size_cutoff):
-    volpath = os.path.normpath(volpath)
-    volume_fd = os.open(volpath, os.O_DIRECTORY)
-    fs, fs_created = get_or_create(
-        sess, Filesystem,
-        uuid=str(get_fsid(volume_fd)))
-    vol, vol_created = get_or_create(
-        sess, Volume,
-        fs=fs, root_id=get_root_id(volume_fd))
+class WholeFS(object):
+    """A singleton representing the local filesystem"""
 
-    if size_cutoff is not None:
-        vol.size_cutoff = size_cutoff
-    elif vol_created:
-        vol.size_cutoff = DEFAULT_SIZE_CUTOFF
+    def __init__(self, sess):
+        self.sess = sess
+        self._mpoints_by_dev = None
+        self._device_info = None
 
-    path_history, ph_created = get_or_create(
-        sess, VolumePathHistory, vol=vol, path=volpath)
+    def get_fs(self, uuid):
+        fs, fs_created = get_or_create(self.sess, Filesystem, uuid=uuid)
+        fs.root_info = None
+        fs.mpoints = None
+        return fs
 
-    # If a volume was given multiple times on the command line,
-    # keep the first name and fd for it.
-    if hasattr(vol, 'fd'):
-        os.close(volume_fd)
-    else:
-        vol.fd = volume_fd
-        vol.st_dev = os.fstat(volume_fd).st_dev
-        # Only use the path as a description, it is liable to change.
-        vol.desc = volpath
-    return vol
+    def iter_other_fs(self, excluded_fs_ids):
+        query = self.sess.query(Filesystem)
+        if excluded_fs_ids:
+            query = query.filter(~ Filesystem.id.in_(excluded_fs_ids))
+        for fs in query:
+            fs.root_info = None
+            fs.mpoints = None
+            yield fs
+
+    def ensure_root_info(self, fs, vol_fd):
+        if fs.root_info is None:
+            fs.root_info = read_root_tree(vol_fd)
+
+    def get_vol(self, volpath, size_cutoff):
+        volpath = os.path.normpath(volpath)
+        volume_fd = os.open(volpath, os.O_DIRECTORY)
+        fs = self.get_fs(uuid=str(get_fsid(volume_fd)))
+        vol, vol_created = get_or_create(
+            self.sess, Volume, fs=fs, root_id=get_root_id(volume_fd))
+
+        if size_cutoff is not None:
+            vol.size_cutoff = size_cutoff
+        elif vol_created:
+            vol.size_cutoff = DEFAULT_SIZE_CUTOFF
+
+        path_history, ph_created = get_or_create(
+            self.sess, VolumePathHistory, vol=vol, path=volpath)
+
+        # If a volume was given multiple times on the command line,
+        # keep the first name and fd for it.
+        if hasattr(vol, 'fd'):
+            os.close(volume_fd)
+        else:
+            vol.fd = volume_fd
+            vol.st_dev = os.fstat(volume_fd).st_dev
+            # Only use the path as a description, it is liable to change.
+            vol.desc = volpath
+        return vol
+
+    @property
+    def mpoints_by_dev(self):
+        if self._mpoints_by_dev is None:
+            mbd = collections.defaultdict(list)
+            with open('/proc/self/mountinfo') as mounts:
+                for line in mounts:
+                    items = line.split()
+                    idx = items.index('-')
+                    fs_type = items[idx + 1]
+                    if fs_type != 'btrfs':
+                        continue
+                    volpath = items[3]
+                    mpoint = items[4]
+                    dev = os.path.realpath(items[idx + 2])
+                    mbd[dev].append((volpath, mpoint))
+            self._mpoints_by_dev = dict(mbd)
+        return self._mpoints_by_dev
+
+    @property
+    def device_info(self):
+        if self._device_info is None:
+            self._device_info = {}
+            for line in subprocess.check_output(
+                'blkid -s LABEL -s UUID -t TYPE=btrfs'.split()
+            ).splitlines():
+                dev, label, uuid = BLKID_RE.match(line).groups()
+                if uuid in self._device_info:
+                    # btrfs raid
+                    assert self._device_info[uuid].label == label
+                    self._device_info[uuid].devices.append(dev)
+                else:
+                    self._device_info[uuid] = DeviceInfo(label, [dev])
+        return self._device_info
+
+    def ensure_mount_info(self, fs):
+        if fs.mpoints is not None:
+            return
+
+        mpoints = collections.defaultdict(list)
+        for dev in self.device_info[fs.uuid].devices:
+            self._read_mount_info(fs, dev, mpoints)
+        fs.mpoints = dict(mpoints)
+
+    def _read_mount_info(self, fs, dev, mpoints):
+        # Tends to be a less descriptive name, so keep the original
+        # name blkid gave for printing.
+        dev_canonical = os.path.realpath(dev)
+
+        if dev_canonical not in self.mpoints_by_dev:
+            # Known to blkid, but not mounted, or in case of raid,
+            # not mounted from this device.
+            # TODO: peek with a private mount?
+            # Only if it can be completely safe and read-only.
+            return
+
+        for volpath, mpoint in self.mpoints_by_dev[dev_canonical]:
+            mpoint_fd = os.open(mpoint, os.O_DIRECTORY)
+            try:
+                if not is_subvolume(mpoint_fd):
+                    continue
+                try:
+                    root_id = get_root_id(mpoint_fd)
+                except IOError as e:
+                    if e.errno == errno.EPERM:
+                        # Unlikely to work on the next loop iteration,
+                        # but try anyway.
+                        continue
+                    raise
+                self.ensure_root_info(fs, mpoint_fd)
+            finally:
+                os.close(mpoint_fd)
+            assert fs.root_info[root_id].path == volpath
+            mpoints[root_id].append(mpoint)
 
 
 def forget_vol(sess, vol):
@@ -107,32 +205,18 @@ BLKID_RE = re.compile(
     br'(?:LABEL="(?P<label>[^"]*)" )?UUID="(?P<uuid>[^"]*)"\s*$')
 
 
-def parse_btrfs_mountinfo():
-    mpoints_by_dev = collections.defaultdict(list)
-    with open('/proc/self/mountinfo') as mounts:
-        for line in mounts:
-            items = line.split()
-            idx = items.index('-')
-            fs_type = items[idx + 1]
-            if fs_type != 'btrfs':
-                continue
-            volpath = items[3]
-            mpoint = items[4]
-            dev = os.path.realpath(items[idx + 2])
-            mpoints_by_dev[dev].append((volpath, mpoint))
-    return mpoints_by_dev
-
-
 def is_subvolume(btrfs_mountpoint_fd):
     st = os.fstat(btrfs_mountpoint_fd)
     return st.st_ino == BTRFS_FIRST_FREE_OBJECTID
 
 
-def show_fs(fs, root_info, initial_indent, indent):
-    def print_indented(line, depth):
-        sys.stdout.write(initial_indent + depth * indent + line + '\n')
+def show_fs(fs, print_indented):
     vols_by_id = dict((vol.root_id, vol) for vol in fs.volumes)
-    for root_id in set(root_info.keys() + vols_by_id.keys()):
+    if fs.root_info:
+        root_ids = set(fs.root_info.keys() + vols_by_id.keys())
+    else:
+        root_ids = vols_by_id.iterkeys()
+    for root_id in root_ids:
         print_indented('Volume %d' % root_id, 0)
         try:
             vol = vols_by_id[root_id]
@@ -146,82 +230,45 @@ def show_fs(fs, root_info, initial_indent, indent):
             if vol.inode_count:
                 print_indented('%d inodes tracked' % vol.inode_count, 1)
 
-        if root_id in root_info:
-            ri = root_info[root_id]
+        if fs.root_info and root_id in fs.root_info:
+            ri = fs.root_info[root_id]
             print_indented('Path %s' % ri.path, 1)
             if ri.is_frozen:
                 print_indented('Frozen', 1)
-            for mpoint in ri.mpoints:
-                print_indented('Mounted on %s' % mpoint, 1)
+            if root_id in fs.mpoints:
+                for mpoint in fs.mpoints[root_id]:
+                    print_indented('Mounted on %s' % mpoint, 1)
         else:
             # We can use vol, since keys come from one or the other
             print_indented(
                 'Last mounted on %s' % vol.last_known_mountpoint, 1)
-            if root_info:
+            if fs.root_info:
                 # The filesystem is available (we could scan the root tree),
                 # so the volume must have been destroyed.
                 print_indented('Deleted', 1)
 
 
-def show_vols(sess):
-    mpoints_by_dev = parse_btrfs_mountinfo()
-
-    def get_root_and_mount_info(dev):
-        # Tends to be a less descriptive name, so keep the original
-        # name blkid gave for printing.
-        dev_canonical = os.path.realpath(dev)
-
-        if dev_canonical not in mpoints_by_dev:
-            # Known to blkid, but not mounted.
-            # TODO: peek with a private mount?
-            # Only if it can be completely safe and read-only.
-            return {}
-
-        root_info = {}
-
-        mpoints = collections.defaultdict(list)
-        for volpath, mpoint in mpoints_by_dev[dev_canonical]:
-            mpoint_fd = os.open(mpoint, os.O_DIRECTORY)
-            if not is_subvolume(mpoint_fd):
-                continue
-            try:
-                root_id = get_root_id(mpoint_fd)
-            except IOError as e:
-                if e.errno == errno.EPERM:
-                    # Unlikely to work on the next loop iteration,
-                    # but try anyway.
-                    continue
-                raise
-            if not root_info:
-                root_info = read_root_tree(mpoint_fd)
-            assert root_info[root_id].path == volpath
-            mpoints[root_id].append(mpoint)
-
-        return dict(
-            (root_id, RootAndMountInfo(
-                *root_info[root_id] + (mpoints[root_id],)))
-            for root_id in root_info.iterkeys())
-
+def show_vols(whole_fs):
     seen_fs_ids = []
-    for line in subprocess.check_output(
-        'blkid -s LABEL -s UUID -t TYPE=btrfs'.split()
-    ).splitlines():
-        dev, label, uuid = BLKID_RE.match(line).groups()
-        sys.stdout.write('%s\n  Label: %s UUID: %s\n' % (dev, label, uuid))
-        fs = sess.query(Filesystem).filter_by(uuid=uuid).scalar()
-        if fs is not None:
-            seen_fs_ids.append(fs.id)
-            root_info = get_root_and_mount_info(dev)
-            show_fs(fs, root_info, '    ', '  ')
+    initial_indent = indent = '  '
 
-    query = sess.query(Filesystem)
-    if seen_fs_ids:
-        query = query.filter(~ Filesystem.id.in_(seen_fs_ids))
-    for fs in query:
-        sys.stdout.write('<device unavailable>\n  UUID: %s\n' % (fs.uuid,))
-        show_fs(fs, {}, '    ', '  ')
+    def print_indented(line, depth):
+        sys.stdout.write(initial_indent + depth * indent + line + '\n')
 
-    sess.commit()
+    for (uuid, di) in whole_fs.device_info.iteritems():
+        sys.stdout.write('Label: %s UUID: %s\n' % (di.label, uuid))
+        for dev in di.devices:
+            sys.stdout.write('  Device: %s\n' % (dev, ))
+        fs = whole_fs.get_fs(uuid)
+        seen_fs_ids.append(fs.id)
+        whole_fs.ensure_mount_info(fs)
+        show_fs(fs, print_indented)
+
+    for fs in whole_fs.iter_other_fs(seen_fs_ids):
+        sys.stdout.write('<no device available>\n  UUID: %s\n' % (fs.uuid,))
+        show_fs(fs, print_indented)
+
+    whole_fs.sess.commit()
 
 
 def track_updated_files(sess, vol, tt):
