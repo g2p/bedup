@@ -57,28 +57,26 @@ Running
 
 You'll see a list of supported commands.
 
--  **scan-vol** scans a subvolume to keep track of potentially
+-  **scan** scans a subvolume to keep track of potentially
    duplicated files.
--  **dedup-vol** runs scan-vol, then deduplicates identical files.
+-  **dedup** runs scan, then deduplicates identical files.
 -  **dedup-files** takes a list of identical files and deduplicates
    them.
 -  **show-vols** shows all known btrfs filesystems and their tracking
    status.
 -  **find-new** is a reimplementation of the ``btrfs find-new`` command.
 
-To deduplicate a mounted btrfs volume:
+To deduplicate a mounted btrfs volume and its non-frozen subvolumes: ::
 
-::
+    sudo python -m bedup dedup /mnt/btrfs
 
-    sudo python -m bedup dedup-vol /mnt/btrfs
+To deduplicate all non-frozen subvolumes in the system: ::
 
-bedup will not recurse into subvolumes, mention multiple subvolumes on
-the command line if you want cross-subvolume deduplication (requires
-Linux 3.6). You can get a list of btrfs subvolumes with:
+    sudo python -m bedup dedup
 
-::
-
-    sudo btrfs subvolume list /mnt/btrfs
+bedup will recurse into subvolumes starting with v0.0.8.
+Since cross-subvolume deduplication requires Linux 3.6, users of older
+kernels should pass a single volume and use the ``--no-subvols`` flag.
 
 The first run can take some time. Subsequent runs will only scan and
 deduplicate the files that have changed in the interval.

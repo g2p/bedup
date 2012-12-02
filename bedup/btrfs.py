@@ -332,7 +332,7 @@ BTRFS_FIRST_FREE_OBJECTID = lib.BTRFS_FIRST_FREE_OBJECTID
 
 u64_max = ffi.cast('uint64_t', -1)
 
-RootInfo = namedtuple('RootInfo', 'path is_frozen')
+RootInfo = namedtuple('RootInfo', 'path parent_root_id is_frozen')
 
 
 def name_of_inode_ref(ref):
@@ -500,7 +500,7 @@ def read_root_tree(volume_fd):
                 is_frozen = bool(item.flags & lib.BTRFS_ROOT_SUBVOL_RDONLY)
                 item_root_id = sh.objectid
                 if sh.objectid == lib.BTRFS_FS_TREE_OBJECTID:
-                    root_info[sh.objectid] = RootInfo(b'/', is_frozen)
+                    root_info[sh.objectid] = RootInfo(b'/', None, is_frozen)
             elif sh.type == lib.BTRFS_ROOT_BACKREF_KEY:
                 ref = ffi.cast('struct btrfs_root_ref *', sh + 1)
                 assert sh.objectid != lib.BTRFS_FS_TREE_OBJECTID
@@ -517,6 +517,7 @@ def read_root_tree(volume_fd):
                 root_info[root_id] = RootInfo(
                     posixpath.join(
                         root_info[parent_root_id].path, parent_path, name),
+                    parent_root_id,
                     is_frozen)
             # There's also a uuid we could catch on a sufficiently recent
             # BTRFS_ROOT_ITEM_KEY (v3.6). Since the fs is live careful

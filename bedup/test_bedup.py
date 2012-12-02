@@ -90,13 +90,13 @@ def stat(fname):
 
 
 def test_functional():
-    boxed_call('scan-vol --'.split() + [fs])
+    boxed_call('scan --'.split() + [fs])
     with open(fs + '/one.sample', 'r+') as busy_file:
         with open(fs + '/three.sample', 'r+') as busy_file:
-            boxed_call('dedup-vol --'.split() + [fs])
-    boxed_call('forget-vol --'.split() + [fs])
-    boxed_call('scan-vol --size-cutoff=65536 --'.split() + [fs, fs])
-    boxed_call('dedup-vol --'.split() + [fs])
+            boxed_call('dedup --'.split() + [fs])
+    boxed_call('reset --'.split() + [fs])
+    boxed_call('scan --size-cutoff=65536 --'.split() + [fs, fs])
+    boxed_call('dedup --'.split() + [fs])
     boxed_call(
         'dedup-files --defragment --'.split() +
         [fs + '/one.sample', fs + '/two.sample'])

@@ -35,7 +35,7 @@ from .migrations import upgrade_schema
 from .syncfs import syncfs
 from .termupdates import TermTemplate
 from .tracking import (
-    show_vols, track_updated_files, dedup_tracked, forget_vol, WholeFS)
+    show_vols, track_updated_files, dedup_tracked, reset_vol, WholeFS)
 
 
 APP_NAME = 'bedup'
@@ -104,18 +104,35 @@ def vol_cmd(args):
         # Adds about 1s to cold startup
         sess = get_session(args)
         whole_fs = WholeFS(sess)
-        volumes = set(
-            whole_fs.get_vol(volpath, args.size_cutoff)
-            for volpath in args.volume)
+
+        if args.volume:
+            # Include cli args and their non-frozen descendants.
+            # We won't ignore explicitly-given frozen volumes, but until the
+            # kernel grows extra support, deduplication will fail, and the
+            # other commands aren't terribly useful without deduplication.
+            vols = whole_fs.load_vols(
+                args.volume, tt, args.size_cutoff, args.recurse_subvols)
+        else:
+            if args.recurse_subvols:
+                if args.command == 'reset':
+                    sys.stderr.write("You need to list volumes explicitly\n")
+                    return 1
+                vols = whole_fs.load_all_visible_vols(tt, args.size_cutoff)
+            else:
+                sys.stderr.write(
+                    "You either need to enable recursion or to "
+                    "pass a list of volumes\n")
+                return 1
+
         vols_by_fs = collections.defaultdict(list)
 
-        if args.command == 'forget-vol':
-            for vol in volumes:
-                forget_vol(sess, vol)
+        if args.command == 'reset':
+            for vol in vols:
+                reset_vol(sess, vol)
 
-        if args.command in ('scan-vol', 'dedup-vol'):
+        if args.command in ('scan', 'dedup'):
             set_idle_priority()
-            for vol in volumes:
+            for vol in vols:
                 if args.flush:
                     tt.format('{elapsed} Flushing %r' % vol.desc)
                     syncfs(vol.fd)
@@ -124,9 +141,11 @@ def vol_cmd(args):
                 track_updated_files(sess, vol, tt)
                 vols_by_fs[vol.fs].append(vol)
 
-        if args.command == 'dedup-vol':
+        if args.command == 'dedup':
             for volset in vols_by_fs.itervalues():
                 dedup_tracked(sess, volset, tt)
+
+        sess.commit()
 
 
 def cmd_generation(args):
@@ -147,13 +166,18 @@ def sql_flags(parser):
 
 
 def vol_flags(parser):
-    parser.add_argument('volume', nargs='+', help='btrfs volumes')
+    parser.add_argument('volume', nargs='*', help='btrfs volumes')
     sql_flags(parser)
     parser.add_argument(
         '--size-cutoff', type=int, dest='size_cutoff',
         help='Change the minimum size (in bytes) of tracked files '
         'for the listed volumes. '
         'Lowering the cutoff will trigger a partial rescan of older files.')
+    parser.add_argument(
+        '--no-subvols', action='store_false', dest='recurse_subvols',
+        help='By default, bedup will add visible non-frozen subvolumes '
+        'to the volumes explicitly listed on the command-line. This '
+        'option disables subvolume recursion.')
 
 
 def scan_flags(parser):
@@ -167,20 +191,20 @@ def main(argv):
     parser = argparse.ArgumentParser(prog='python -m bedup')
     commands = parser.add_subparsers(dest='command')
 
-    sp_scan_vol = commands.add_parser('scan-vol', description="""
+    sp_scan_vol = commands.add_parser('scan', description="""
 Scans listed volumes to keep track of potentially duplicated files.""")
     sp_scan_vol.set_defaults(action=vol_cmd)
     scan_flags(sp_scan_vol)
 
-    sp_dedup_vol = commands.add_parser('dedup-vol', description="""
-Runs scan-vol, then deduplicates identical files.""")
+    sp_dedup_vol = commands.add_parser('dedup', description="""
+Runs scan, then deduplicates identical files.""")
     sp_dedup_vol.set_defaults(action=vol_cmd)
     scan_flags(sp_dedup_vol)
 
-    sp_forget_vol = commands.add_parser('forget-vol', description="""
-Forget tracking data for the listed volumes. Mostly useful for testing.""")
-    sp_forget_vol.set_defaults(action=vol_cmd)
-    vol_flags(sp_forget_vol)
+    sp_reset_vol = commands.add_parser('reset', description="""
+Reset tracking data for the listed volumes. Mostly useful for testing.""")
+    sp_reset_vol.set_defaults(action=vol_cmd)
+    vol_flags(sp_reset_vol)
 
     sp_show_vols = commands.add_parser('show-vols', description="""
 Shows known volumes.""")

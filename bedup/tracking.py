@@ -75,8 +75,13 @@ class WholeFS(object):
 
     def get_fs(self, uuid):
         fs, fs_created = get_or_create(self.sess, Filesystem, uuid=uuid)
-        fs.root_info = None
-        fs.mpoints = None
+        if not hasattr(fs, 'root_info'):
+            fs.root_info = None
+            fs.mpoints = None
+        else:
+            assert hasattr(fs, 'mpoints')
+        if uuid in self.device_info:
+            fs.label = self.device_info[uuid].label
         return fs
 
     def iter_other_fs(self, excluded_fs_ids):
@@ -84,11 +89,12 @@ class WholeFS(object):
         if excluded_fs_ids:
             query = query.filter(~ Filesystem.id.in_(excluded_fs_ids))
         for fs in query:
-            fs.root_info = None
-            fs.mpoints = None
+            if not hasattr(fs, 'root_info'):
+                fs.root_info = None
+                fs.mpoints = None
             yield fs
 
-    def ensure_root_info(self, fs, vol_fd):
+    def _ensure_root_info(self, fs, vol_fd):
         if fs.root_info is None:
             fs.root_info = read_root_tree(vol_fd)
 
@@ -96,8 +102,10 @@ class WholeFS(object):
         volpath = os.path.normpath(volpath)
         volume_fd = os.open(volpath, os.O_DIRECTORY)
         fs = self.get_fs(uuid=str(get_fsid(volume_fd)))
+        assert hasattr(fs, 'mpoints')
         vol, vol_created = get_or_create(
             self.sess, Volume, fs=fs, root_id=get_root_id(volume_fd))
+        assert hasattr(vol.fs, 'mpoints')
 
         if size_cutoff is not None:
             vol.size_cutoff = size_cutoff
@@ -152,6 +160,82 @@ class WholeFS(object):
                     self._device_info[uuid] = DeviceInfo(label, [dev])
         return self._device_info
 
+    def load_all_visible_vols(self, tt, size_cutoff):
+        # All visible non-frozen volumes
+        # XXX Same failure mode as load_vols_rec
+        loaded = []
+        for (uuid, di) in self.device_info.iteritems():
+            fs = self.get_fs(uuid)
+            self.ensure_mount_info(fs)
+            if fs.mpoints:
+                mpoints = reduce(lambda l1, l2: l1 + l2, fs.mpoints.values())
+                loaded += self._load_visible_vols(
+                    fs, mpoints, tt, size_cutoff,
+                    include_frozen_if_listed=False)
+        return loaded
+
+    def load_vols(self, volpaths, tt, size_cutoff, recurse):
+        # The volume at volpath, plus all its visible non-frozen descendants
+        # XXX Some of these may fail if other filesystems
+        # are mounted on top of them.
+        loaded = set()
+        for volpath in volpaths:
+            vol = self.get_vol(volpath, size_cutoff)
+            if recurse:
+                self.ensure_mount_info(vol.fs)
+                loaded.update(self._load_visible_vols(
+                    vol.fs, [volpath], tt, size_cutoff,
+                    include_frozen_if_listed=True))
+            else:
+                loaded.add(vol)
+        return loaded
+
+    def _load_visible_vols(
+        self, fs, start_paths, tt, size_cutoff, include_frozen_if_listed
+    ):
+        child_id_map = collections.defaultdict(list)
+
+        # Use sets, there may be repetitions under multiple mpoints
+        frozen_skipped = set()
+        loaded = set()
+
+        for root_id, ri in fs.root_info.iteritems():
+            if ri.parent_root_id is not None:
+                child_id_map[ri.parent_root_id].append(root_id)
+
+        def _load_children(start_fd, start_fspath, start_intpath, root_id):
+            if fs.root_info[root_id].is_frozen:
+                frozen_skipped.add(root_id)
+            else:
+                relpath = os.path.relpath(
+                    fs.root_info[root_id].path, start_intpath)
+                # XXX start_fd would be more reliable here;
+                # probably requires Python 3.3 for relative open.
+                vol = self.get_vol(
+                    os.path.join(start_fspath, relpath), size_cutoff)
+                loaded.add(vol)
+            for child_id in child_id_map[root_id]:
+                _load_children(start_fd, start_fspath, start_intpath, child_id)
+
+        for start_fspath in start_paths:
+            vol = self.get_vol(start_fspath, size_cutoff)
+            ri = fs.root_info[vol.root_id]
+            if ri.is_frozen and include_frozen_if_listed:
+                loaded.add(vol)
+            start_intpath = ri.path
+            # relpath is more predictable with absolute paths;
+            # otherwise it relies on getcwd (via abspath)
+            assert os.path.isabs(start_intpath)
+            _load_children(vol.fd, start_fspath, start_intpath, vol.root_id)
+            if ri.is_frozen and include_frozen_if_listed:
+                frozen_skipped.remove(vol.root_id)
+
+        if frozen_skipped:
+            tt.notify(
+                'Skipped %d frozen volumes in filesystem %s %s' % (
+                    len(frozen_skipped), fs.label, fs.uuid))
+        return loaded
+
     def ensure_mount_info(self, fs):
         if fs.mpoints is not None:
             return
@@ -186,14 +270,14 @@ class WholeFS(object):
                         # but try anyway.
                         continue
                     raise
-                self.ensure_root_info(fs, mpoint_fd)
+                self._ensure_root_info(fs, mpoint_fd)
             finally:
                 os.close(mpoint_fd)
             assert fs.root_info[root_id].path == volpath
             mpoints[root_id].append(mpoint)
 
 
-def forget_vol(sess, vol):
+def reset_vol(sess, vol):
     # Forgets Inodes, not logging. Make that configurable?
     sess.query(Inode).filter_by(vol=vol).delete()
     vol.last_tracked_generation = 0
