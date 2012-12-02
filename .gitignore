@@ -4,5 +4,6 @@
 /MANIFEST
 /bedup.egg-info/
 /bedup/__pycache__/
+/bedup/_cffi__*.so
 /build/
 /dist/
