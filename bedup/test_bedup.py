@@ -110,7 +110,7 @@ def test_functional():
     # Check that atime and mtime are restored
     assert stat0 == stat1
     boxed_call('find-new --'.split() + [fs])
-    boxed_call('show-vols'.split())
+    boxed_call('show'.split())
 
 
 @pytest.mark.xfail

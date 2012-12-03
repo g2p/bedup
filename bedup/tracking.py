@@ -33,6 +33,7 @@ from collections import namedtuple
 from contextlib import closing
 from contextlib2 import ExitStack
 from sqlalchemy import and_
+from uuid import UUID
 
 from .btrfs import (
     lookup_ino_path_one, get_fsid, get_root_id,
@@ -85,7 +86,7 @@ class WholeFS(object):
             fs.label = self.device_info[uuid].label
         return fs
 
-    def iter_other_fs(self, excluded_fs_ids):
+    def _iter_other_fs(self, excluded_fs_ids):
         query = self.sess.query(Filesystem)
         if excluded_fs_ids:
             query = query.filter(~ Filesystem.id.in_(excluded_fs_ids))
@@ -94,6 +95,16 @@ class WholeFS(object):
                 fs.root_info = None
                 fs.mpoints = None
             yield fs
+
+    def iter_fs(self):
+        seen_fs_ids = []
+        for (uuid, di) in self.device_info.iteritems():
+            fs = self.get_fs(uuid)
+            seen_fs_ids.append(fs.id)
+            yield fs, di
+
+        for fs in self._iter_other_fs(seen_fs_ids):
+            yield fs, None
 
     def _ensure_root_info(self, fs, vol_fd):
         if fs.root_info is None:
@@ -363,7 +374,7 @@ def show_fs(fs, print_indented):
             ri = fs.root_info[root_id]
             if root_id in fs.available_paths:
                 for apath in fs.available_paths[root_id]:
-                    print_indented('Visible at %s' % apath, 1)
+                    print_indented('Accessible at %s' % apath, 1)
             else:
                 print_indented('Internal path %s' % ri.path, 1)
         else:
@@ -372,9 +383,19 @@ def show_fs(fs, print_indented):
                 'Last seen at %s' % vol.last_known_mountpoint, 1)
 
 
-def show_vols(whole_fs):
-    seen_fs_ids = []
+def show_vols(whole_fs, fsuuid_or_device):
     initial_indent = indent = '  '
+    uuid_filter = device_filter = None
+    found = True
+
+    if fsuuid_or_device is not None:
+        found = False
+        if fsuuid_or_device[0] == '/':
+            device_filter = fsuuid_or_device
+            # TODO: use stat, if it's a dir,
+            # call show_vol extracted from show_fs
+        else:
+            uuid_filter = UUID(hex=fsuuid_or_device)
 
     def print_indented(line, depth):
         sys.stdout.write(initial_indent + depth * indent + line + '\n')
@@ -383,19 +404,31 @@ def show_vols(whole_fs):
     # Can't link volume ids to mountpoints, can't list subvolumes.
     # There's just blkid sharing blkid.tab, and the kernel with mountinfo.
     # Print a warning?
-    for (uuid, di) in whole_fs.device_info.iteritems():
-        sys.stdout.write('Label: %s UUID: %s\n' % (di.label, uuid))
-        for dev in di.devices:
-            print_indented('Device: %s' % (dev, ), 0)
-        fs = whole_fs.get_fs(uuid)
-        seen_fs_ids.append(fs.id)
-        whole_fs.ensure_available_paths(fs)
-        show_fs(fs, print_indented)
+    for (fs, di) in whole_fs.iter_fs():
+        if uuid_filter:
+            if UUID(hex=fs.uuid) == uuid_filter:
+                found = True
+            else:
+                continue
+        if di is not None:
+            if device_filter:
+                if device_filter in di.devices:
+                    found = True
+                else:
+                    continue
+            sys.stdout.write('Label: %s UUID: %s\n' % (di.label, fs.uuid))
+            for dev in di.devices:
+                print_indented('Device: %s' % (dev, ), 0)
+            whole_fs.ensure_available_paths(fs)
+            show_fs(fs, print_indented)
+        elif device_filter is None:
+            sys.stdout.write(
+                'UUID: %s\n  <no device available>\n' % (fs.uuid,))
+            show_fs(fs, print_indented)
 
-    for fs in whole_fs.iter_other_fs(seen_fs_ids):
-        sys.stdout.write('UUID: %s\n  <no device available>\n' % (fs.uuid,))
-        show_fs(fs, print_indented)
-
+    if not found:
+        sys.stderr.write(
+            'Filesystem at %s was not found\n' % fsuuid_or_device)
     whole_fs.sess.commit()
 
 

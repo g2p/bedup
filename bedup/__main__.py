@@ -62,7 +62,7 @@ def cmd_find_new(args):
 def cmd_show_vols(args):
     sess = get_session(args)
     whole_fs = WholeFS(sess)
-    show_vols(whole_fs)
+    show_vols(whole_fs, args.fsuuid_or_device)
 
 
 def sql_setup(dbapi_con, con_record):
@@ -268,9 +268,10 @@ Reset tracking data for the listed volumes. Mostly useful for testing.""")
     vol_flags(sp_reset_vol)
 
     sp_show_vols = commands.add_parser(
-        'show-vols', help='Show metadata overview', description="""
-Shows known volumes.""")
+        'show', help='Show metadata overview', description="""
+Shows filesystems and volumes with their tracking status.""")
     sp_show_vols.set_defaults(action=cmd_show_vols)
+    sp_show_vols.add_argument('fsuuid_or_device', nargs='?')
     sql_flags(sp_show_vols)
 
     sp_find_new = commands.add_parser(

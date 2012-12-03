@@ -59,13 +59,10 @@ Running
 
 You'll see a list of supported commands.
 
--  **scan** scans a subvolume to keep track of potentially
-   duplicated files.
+-  **scan** scans volumes to keep track of potentially duplicated files.
 -  **dedup** runs scan, then deduplicates identical files.
--  **dedup-files** takes a list of identical files and deduplicates
-   them.
--  **show-vols** shows all known btrfs filesystems and their tracking
-   status.
+-  **dedup-files** takes a list of identical files and deduplicates them.
+-  **show** shows btrfs filesystems and their tracking status.
 -  **find-new** is a reimplementation of the ``btrfs find-new`` command.
 
 To deduplicate a mounted btrfs volume and its non-frozen subvolumes: ::
