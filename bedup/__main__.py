@@ -178,7 +178,11 @@ def user_confirmation(message, default):
         no_values.append('')
 
     while True:
-        choice = raw_input("%s (%s) " % (message, choices)).lower().strip()
+        try:
+            choice = raw_input("%s (%s) " % (message, choices)).lower().strip()
+        except EOFError:
+            # non-interactive
+            choice = ''
         if choice in yes_values:
             return True
         elif choice in no_values:
