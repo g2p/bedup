@@ -94,6 +94,9 @@ class TermTemplate(object):
             self._render(with_newline=True)
         else:
             self._initial_time = monotonic_time()
+        self._kws.clear()
+        self._kws_counter.clear()
+        self._kws_totals.clear()
         if template is None:
             self._template = None
         else:
