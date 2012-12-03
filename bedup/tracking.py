@@ -17,7 +17,6 @@
 # You should have received a copy of the GNU General Public License
 # along with bedup.  If not, see <http://www.gnu.org/licenses/>.
 
-import collections
 import errno
 import fcntl
 import gc
@@ -29,7 +28,7 @@ import stat
 import subprocess
 import sys
 
-from collections import namedtuple
+from collections import namedtuple, defaultdict, OrderedDict
 from contextlib import closing
 from contextlib2 import ExitStack
 from sqlalchemy import and_
@@ -136,12 +135,18 @@ class WholeFS(object):
             vol.st_dev = os.fstat(volume_fd).st_dev
             # Only use the path as a description, it is liable to change.
             vol.desc = volpath
+            self._ensure_root_info(fs, volume_fd)
+            vol.root_info = fs.root_info[vol.root_id]
         return vol
+
+    def _close_vol(self, vol):
+        os.close(vol.fd)
+        del vol.fd
 
     @property
     def mpoints_by_dev(self):
         if self._mpoints_by_dev is None:
-            mbd = collections.defaultdict(list)
+            mbd = defaultdict(list)
             with open('/proc/self/mountinfo') as mounts:
                 for line in mounts:
                     items = line.split()
@@ -174,36 +179,58 @@ class WholeFS(object):
 
     def load_all_visible_vols(self, tt, size_cutoff):
         # All visible non-frozen volumes
-        # XXX Same failure mode as load_vols_rec
+        # XXX Same failure mode as load_vols
         loaded = []
         for (uuid, di) in self.device_info.iteritems():
             fs = self.get_fs(uuid)
             self.ensure_mount_info(fs)
             if fs.mpoints:
                 mpoints = reduce(lambda l1, l2: l1 + l2, fs.mpoints.values())
-                loaded += self._load_visible_vols(
-                    fs, mpoints, tt, size_cutoff,
-                    include_frozen_if_listed=False)
+                lo, sta = self._load_visible_vols(fs, mpoints, size_cutoff)
+                skipped = 0
+                for vol in lo:
+                    if vol.root_info.is_frozen:
+                        self._close_vol(vol)
+                        skipped += 1
+                    else:
+                        loaded.append(vol)
+                if skipped:
+                    tt.notify(
+                        'Skipped %d frozen volumes in filesystem %s %s' % (
+                            skipped, fs.label, fs.uuid))
         return loaded
 
     def load_vols(self, volpaths, tt, size_cutoff, recurse):
         # The volume at volpath, plus all its visible non-frozen descendants
         # XXX Some of these may fail if other filesystems
         # are mounted on top of them.
-        loaded = set()
+        loaded = OrderedDict()
         for volpath in volpaths:
             vol = self.get_vol(volpath, size_cutoff)
             if recurse:
                 self.ensure_mount_info(vol.fs)
-                loaded.update(self._load_visible_vols(
-                    vol.fs, [volpath], tt, size_cutoff,
-                    include_frozen_if_listed=True))
+                lo, sta = self._load_visible_vols(
+                    vol.fs, [volpath], size_cutoff)
+                skipped = 0
+                for vol in lo:
+                    if vol in loaded:
+                        continue
+                    if vol.root_info.is_frozen and vol not in sta:
+                        self._close_vol(vol)
+                        skipped += 1
+                    else:
+                        loaded[vol] = True
+                if skipped:
+                    tt.notify(
+                        'Skipped %d frozen volumes in filesystem %s %s' % (
+                            skipped, vol.fs.label, vol.fs.uuid))
             else:
-                loaded.add(vol)
-        return loaded
+                if vol not in loaded:
+                    loaded[vol] = True
+        return loaded.keys()
 
     def _iter_subvols(self, fs, start_root_ids):
-        child_id_map = collections.defaultdict(list)
+        child_id_map = defaultdict(list)
 
         for root_id, ri in fs.root_info.iteritems():
             if ri.parent_root_id is not None:
@@ -220,53 +247,41 @@ class WholeFS(object):
                 yield item
 
 
-    def _load_visible_vols(
-        self, fs, start_paths, tt, size_cutoff, include_frozen_if_listed
-    ):
-        # Use sets, there may be repetitions under multiple mpoints
-        frozen_skipped = set()
-        loaded = set()
+    def _load_visible_vols(self, fs, start_paths, size_cutoff):
+        # Use dicts, there may be repetitions under multiple mpoints
+        loaded = OrderedDict()
 
-        start_vols0 = set(
-            self.get_vol(start_fspath, size_cutoff)
-            for start_fspath in start_paths)
-        start_vols = dict((vol.root_id, vol) for vol in start_vols0)
+        start_vols = OrderedDict(
+            (vol.root_id, vol)
+            for vol in (
+                self.get_vol(start_fspath, size_cutoff)
+                for start_fspath in start_paths))
 
         for (root_id, ri, top_level) in self._iter_subvols(fs, start_vols):
             if top_level:
                 start_vol = start_vols[root_id]
+                if start_vol not in loaded:
+                    loaded[start_vol] = True
                 start_fspath = start_vol.desc
-                if ri.is_frozen:
-                    if include_frozen_if_listed:
-                        loaded.add(start_vol)
-                    else:
-                        frozen_skipped.add(start_vol.root_id)
                 start_intpath = ri.path
                 # relpath is more predictable with absolute paths;
                 # otherwise it relies on getcwd (via abspath)
                 assert os.path.isabs(start_intpath)
             else:
-                if ri.is_frozen:
-                    frozen_skipped.add(root_id)
-                    continue
                 relpath = os.path.relpath(ri.path, start_intpath)
                 # XXX start_vol.fd would be more reliable here;
                 # probably requires Python 3.3 for relative open.
                 vol = self.get_vol(
                     os.path.join(start_fspath, relpath), size_cutoff)
-                loaded.add(vol)
-
-        if frozen_skipped:
-            tt.notify(
-                'Skipped %d frozen volumes in filesystem %s %s' % (
-                    len(frozen_skipped), fs.label, fs.uuid))
-        return loaded
+                if vol not in loaded:
+                    loaded[vol] = True
+        return loaded.keys(), start_vols.values()
 
     def ensure_mount_info(self, fs):
         if fs.mpoints is not None:
             return
 
-        mpoints = collections.defaultdict(list)
+        mpoints = defaultdict(list)
         for dev in self.device_info[fs.uuid].devices:
             self._read_mount_info(fs, dev, mpoints)
         fs.mpoints = dict(mpoints)
@@ -277,7 +292,7 @@ class WholeFS(object):
         self.ensure_mount_info(fs)
         if not fs.root_info:
             return
-        ap = collections.defaultdict(set)
+        ap = defaultdict(set)
         for (root_id, ri, top_level) in self._iter_subvols(fs, fs.mpoints):
             if top_level:
                 start_mpoints = fs.mpoints[root_id]
@@ -683,7 +698,7 @@ def dedup_tracked1(sess, tt, ofile_reserved, query, fs, skipped):
             fds = []
             fd_names = {}
             fd_inodes = {}
-            by_hash = collections.defaultdict(list)
+            by_hash = defaultdict(list)
 
             # XXX I have no justification for doubling count3
             ofile_req = 2 * count3 + ofile_reserved
