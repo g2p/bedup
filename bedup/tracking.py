@@ -447,6 +447,21 @@ def show_vols(whole_fs, fsuuid_or_device):
     whole_fs.sess.commit()
 
 
+def fake_updates(sess, max_events):
+    faked = 0
+    for de in sess.query(DedupEvent).limit(max_events):
+        ino_count = 0
+        for dei in de.inodes:
+            inode = sess.query(Inode).filter_by(ino=dei.ino, vol=dei.vol).scalar()
+            if not inode:
+                continue
+            inode.has_updates = True
+            ino_count += 1
+        if ino_count > 1:
+            faked += 1
+    return faked
+
+
 def track_updated_files(sess, vol, tt):
     from .btrfs import ffi, u64_max
 

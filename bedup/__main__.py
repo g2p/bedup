@@ -35,7 +35,8 @@ from .migrations import upgrade_schema
 from .syncfs import syncfs
 from .termupdates import TermTemplate
 from .tracking import (
-    show_vols, track_updated_files, dedup_tracked, reset_vol, WholeFS)
+    show_vols, track_updated_files, dedup_tracked, reset_vol,
+    WholeFS, fake_updates)
 
 
 APP_NAME = 'bedup'
@@ -205,6 +206,21 @@ def cmd_forget_fs(args):
         print('Wiped all data about %s' % desc)
 
 
+def cmd_shell(args):
+    sess = get_session(args)
+    whole_fs = WholeFS(sess)
+    from . import model
+    from IPython import embed
+    embed()
+
+
+def cmd_fake_updates(args):
+    sess = get_session(args)
+    faked = fake_updates(sess, args.max_events)
+    sess.commit()
+    print('Faked about %d commonality clusters' % faked)
+
+
 def sql_flags(parser):
     parser.add_argument(
         '--db-path', dest='db_path',
@@ -331,6 +347,19 @@ Display the btrfs generation of VOLUME""")
     sp_generation.add_argument(
         '--flush', action='store_true', dest='flush',
         help='Flush outstanding data using syncfs before lookup')
+
+    sp_shell = commands.add_parser(
+        'shell', description="""
+Run an interactive shell (useful for prototyping).""")
+    sp_shell.set_defaults(action=cmd_shell)
+    sql_flags(sp_shell)
+
+    sp_fake_updates = commands.add_parser(
+        'fake-updates', description="""
+Fake inode updates from the latest dedup events (useful for benchmarking).""")
+    sp_fake_updates.set_defaults(action=cmd_fake_updates)
+    sp_fake_updates.add_argument('max_events', type=int)
+    sql_flags(sp_fake_updates)
 
     args = parser.parse_args(argv[1:])
     return args.action(args)
