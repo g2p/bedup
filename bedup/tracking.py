@@ -26,18 +26,20 @@ import resource
 import stat
 import sys
 
-from collections import defaultdict
+from collections import defaultdict, namedtuple
 from contextlib import closing
 from contextlib2 import ExitStack
-from sqlalchemy import and_
+from itertools import groupby
+from sqlalchemy.sql import and_, select, func, literal_column
 
 from .btrfs import (
     lookup_ino_path_one, get_root_generation, clone_data, defragment)
 from .datetime import system_now
 from .dedup import ImmutableFDs, cmp_files
+from .hashing import mini_hash_from_file, fiemap_hash_from_file
 from .openat import fopenat, fopenat_rw
 from .model import (
-    Inode, comm_mappings, get_or_create, DedupEvent, DedupEventInode)
+    Inode, Volume, get_or_create, DedupEvent, DedupEventInode)
 
 
 BUFSIZE = 8192
@@ -188,19 +190,29 @@ def track_updated_files(sess, vol, tt):
     sess.commit()
 
 
-def windowed_query(window_start, query, attr, per, clear_updates):
+Commonality1 = namedtuple('Commonality1', 'size inode_count inodes')
+
+
+def windowed_query(sess, window_start, filt, query, attr, per, clear_updates):
     # [window_start, window_end] is inclusive at both ends
     # Figure out how to use attr for property access as well?
     query = query.order_by(-attr)
 
     while True:
-        li = query.filter(attr <= window_start).limit(per).all()
+        query1 = query.where(attr <= window_start).limit(per).alias('q1')
+        li = sess.execute(query1).fetchall()
         if not li:
             clear_updates(window_start, 0)
             return
-        for el in li:
-            yield el
-        window_end = el.size
+        window_start = li[0].size
+        window_end = li[-1].size
+        # If we wanted to be subtle we'd use limits here as well
+        inodes = sess.query(Inode).select_from(filt).join(
+            query1, query1.c.size == Inode.size).order_by(-Inode.size, Inode.ino)
+        inodes_by_size = groupby(inodes, lambda inode: inode.size)
+        for size, inodes in inodes_by_size:
+            inodes = list(inodes)
+            yield Commonality1(size, len(inodes), inodes)
         clear_updates(window_start, window_end)
         window_start = window_end - 1
 
@@ -215,9 +227,36 @@ def dedup_tracked(sess, volset, tt):
     # get closed, 1 per volume.
     ofile_reserved = 7 + len(volset)
 
-    FilteredInode, Commonality1, unregister = comm_mappings(fs.id, vol_ids)
-    query = sess.query(Commonality1)
-    le = query.count()
+    fs_id = fs.id
+
+    inode = Inode.__table__
+    volume = Volume.__table__
+
+    inode_with_fs = select(
+        inode.c + [volume.c.fs_id]
+    ).where(
+        inode.c.vol_id == volume.c.id
+    ).alias('inode_with_fs')
+
+    filtered_inode = select(
+       inode_with_fs.c
+    ).where(and_(
+       inode_with_fs.c.vol_id.in_(vol_ids),
+       inode_with_fs.c.fs_id == fs_id,
+    )).alias('filtered_inode')
+
+    commonality1 = select([
+       filtered_inode.c.size,
+       func.count().label('inode_count'),
+       func.max(filtered_inode.c.has_updates).label('has_updates')]
+    ).group_by(
+       filtered_inode.c.size,
+    ).having(and_(
+       literal_column('inode_count') > 1,
+       literal_column('has_updates') > 0,
+    ))
+
+    le = sess.execute(commonality1.count()).scalar()
 
     def clear_updates(window_start, window_end):
         # Can't call update directly on FilteredInode because it is aliased.
@@ -230,6 +269,7 @@ def dedup_tracked(sess, volset, tt):
 
         for inode in skipped:
             inode.has_updates = True
+        # This commit is slow, despite the PRAGMA below.
         sess.commit()
         # clear the list
         skipped[:] = []
@@ -243,12 +283,16 @@ def dedup_tracked(sess, volset, tt):
         window_start = sess.query(Inode).order_by(-Inode.size).first().size
 
         query = windowed_query(
-            window_start, query, attr=Commonality1.size, per=WINDOW_SIZE,
+            sess,
+            window_start,
+            filtered_inode,
+            commonality1,
+            attr=filtered_inode.c.size,
+            per=WINDOW_SIZE,
             clear_updates=clear_updates)
         dedup_tracked1(sess, tt, ofile_reserved, query, fs, skipped)
 
     sess.commit()
-    unregister()
 
 
 def dedup_tracked1(sess, tt, ofile_reserved, query, fs, skipped):
@@ -263,13 +307,17 @@ def dedup_tracked1(sess, tt, ofile_reserved, query, fs, skipped):
     # should disable most commit-time fsync calls without compromising
     # consistency.
     sess.execute('PRAGMA synchronous=NORMAL;')
+    # just to check commit speed
+    #sess.commit()
 
     for comm1 in query:
         if len(sess.identity_map) > 300:
             sess.flush()
 
-        space_gain1 += comm1.size * (comm1.inode_count - 1)
+        size = comm1.size
+        space_gain1 += size * (comm1.inode_count - 1)
         tt.update(comm1=comm1)
+        by_mh = defaultdict(list)
         for inode in comm1.inodes:
             # XXX Need to cope with deleted inodes.
             # We cannot find them in the search-new pass, not without doing
@@ -297,12 +345,15 @@ def dedup_tracked1(sess, tt, ofile_reserved, query, fs, skipped):
                 sess.delete(inode)
                 continue
             with closing(fopenat(inode.vol.fd, path)) as rfile:
-                inode.mini_hash_from_file(rfile)
+                by_mh[mini_hash_from_file(inode, rfile)].append(inode)
 
-        for comm2 in comm1.comm2:
-            space_gain2 += comm2.size * (comm2.inode_count - 1)
-            tt.update(comm2=comm2)
-            for inode in comm2.inodes:
+        for inodes in by_mh.itervalues():
+            inode_count = len(inodes)
+            if inode_count < 2:
+                continue
+            fies = set()
+            space_gain2 += size * (inode_count - 1)
+            for inode in inodes:
                 try:
                     path = lookup_ino_path_one(inode.vol.fd, inode.ino)
                 except IOError as e:
@@ -311,23 +362,20 @@ def dedup_tracked1(sess, tt, ofile_reserved, query, fs, skipped):
                     sess.delete(inode)
                     continue
                 with closing(fopenat(inode.vol.fd, path)) as rfile:
-                    inode.fiemap_hash_from_file(rfile)
+                    fies.add(fiemap_hash_from_file(rfile))
 
-            if not comm2.comm3:
+            if len(fies) < 2:
                 continue
 
-            comm3, = comm2.comm3
-            count3 = comm3.inode_count
-            space_gain3 += comm3.size * (count3 - 1)
-            tt.update(comm3=comm3)
+            space_gain3 += size * (inode_count - 1)
             files = []
             fds = []
             fd_names = {}
             fd_inodes = {}
             by_hash = defaultdict(list)
 
-            # XXX I have no justification for doubling count3
-            ofile_req = 2 * count3 + ofile_reserved
+            # XXX I have no justification for doubling inode_count
+            ofile_req = 2 * inode_count + ofile_reserved
             if ofile_req > ofile_soft:
                 if ofile_req <= ofile_hard:
                     resource.setrlimit(
@@ -337,13 +385,13 @@ def dedup_tracked1(sess, tt, ofile_reserved, query, fs, skipped):
                     tt.notify(
                         'Too many duplicates (%d at size %d), '
                         'would bring us over the open files limit (%d, %d).'
-                        % (count3, comm3.size, ofile_soft, ofile_hard))
-                    for inode in comm3.inodes:
+                        % (inode_count, size, ofile_soft, ofile_hard))
+                    for inode in inodes:
                         if inode.has_updates:
                             skipped.append(inode)
                     continue
 
-            for inode in comm3.inodes:
+            for inode in inodes:
                 # Open everything rw, we can't pick one for the source side
                 # yet because the crypto hash might eliminate it.
                 # We may also want to defragment the source.
@@ -410,9 +458,9 @@ def dedup_tracked1(sess, tt, ofile_reserved, query, fs, skipped):
                         skipped.append(inode)
                         continue
 
-                    size = afile.tell()
-                    if size != comm3.size:
-                        if size < inode.vol.size_cutoff:
+                    size1 = afile.tell()
+                    if size1 != size:
+                        if size1 < inode.vol.size_cutoff:
                             # if we didn't delete this inode, it would cause
                             # spurious comm groups in all future invocations.
                             sess.delete(inode)
@@ -451,7 +499,7 @@ def dedup_tracked1(sess, tt, ofile_reserved, query, fs, skipped):
                                     sname, dname))
                     if dfiles_successful:
                         evt = DedupEvent(
-                            fs=fs, item_size=comm3.size, created=system_now())
+                            fs=fs, item_size=size, created=system_now())
                         sess.add(evt)
                         for afile in [sfile] + dfiles_successful:
                             inode = fd_inodes[afile.fileno()]

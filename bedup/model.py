@@ -18,8 +18,7 @@
 
 from sqlalchemy.orm import relationship, column_property, backref as backref_
 from sqlalchemy.orm.exc import NoResultFound
-from sqlalchemy.orm.instrumentation import unregister_class
-from sqlalchemy.sql import and_, select, func, literal_column, distinct
+from sqlalchemy.sql import select, func
 from sqlalchemy.ext.declarative import declarative_base, declared_attr
 from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.types import (
@@ -27,9 +26,8 @@ from sqlalchemy.types import (
 from sqlalchemy.schema import (
     Column, ForeignKey, UniqueConstraint, CheckConstraint)
 
-from zlib import adler32
-from . import fiemap
 from .datetime import UTC
+from .hashing import mini_hash_from_file, fiemap_hash_from_file
 
 
 def parent_entity(cattr):
@@ -142,19 +140,13 @@ class InodeProps(object):
     def fs_id(cls):
         return column_property(
             select([Volume.fs_id]).where(
-                Volume.id == cls.vol_id).label('fs_id'))
+                Volume.id == cls.vol_id).label('fs_id'), deferred=True)
 
     def mini_hash_from_file(self, rfile):
-        # A very cheap, very partial hash for quick disambiguation
-        # Won't help with things like zeroed or sparse files.
-        # The mini_hash for those is 0x10000001
-        rfile.seek(int(self.size * .3))
-        # bitops to make unsigned, for better readability
-        self.mini_hash = adler32(rfile.read(4096)) & 0xffffffff
+        self.mini_hash = mini_hash_from_file(self, rfile)
 
     def fiemap_hash_from_file(self, rfile):
-        extents = tuple(fiemap.fiemap(rfile.fileno()))
-        self.fiemap_hash = hash(extents)
+        self.fiemap_hash = fiemap_hash_from_file(rfile)
 
 
 class Inode(Base, InodeProps):
@@ -226,135 +218,6 @@ DedupEvent.inode_count = column_property(
     .where(DedupEventInode.event_id == DedupEvent.id)
     .label('inode_count'))
 
-
-def comm_mappings(fs_id, vol_ids):
-    class FilteredInode(Base, InodeProps):
-        __table__ = select(
-            Inode.__table__.c
-        ).where(and_(
-            Inode.__table__.c.vol_id.in_(vol_ids),
-            Inode.fs_id == fs_id,
-        )).alias('filtered_inode')
-
-        vol_id = __table__.c.vol_id
-        vol = relationship(Volume)
-
-    class Commonality1(Base):
-        __table__ = select([
-            FilteredInode.size,
-            func.count().label('inode_count'),
-            func.max(FilteredInode.has_updates).label('has_updates'),
-        ]).group_by(
-            FilteredInode.size,
-        ).having(and_(
-            literal_column('inode_count') > 1,
-            literal_column('has_updates') > 0,
-        )).alias('commonality1')
-
-        __mapper_args__ = (
-            dict(
-                primary_key=[__table__.c.size],
-                order_by=[-__table__.c.size],
-            ))
-
-        inodes = relationship(
-            FilteredInode,
-            primaryjoin=and_(
-                FilteredInode.size == __table__.c.size),
-            foreign_keys=list(FilteredInode.__table__.c))
-
-    class Commonality2(Base):
-        __table__ = select([
-            FilteredInode.size,
-            FilteredInode.mini_hash,
-            func.count().label('inode_count'),
-            func.max(FilteredInode.has_updates).label('has_updates'),
-        ]).where(and_(
-            FilteredInode.mini_hash != None,
-        )).group_by(
-            FilteredInode.size,
-            FilteredInode.mini_hash,
-        ).having(and_(
-            literal_column('inode_count') > 1,
-            literal_column('has_updates') > 0,
-        )).alias('commonality2')
-
-        __mapper_args__ = (
-            dict(primary_key=[
-                __table__.c.size,
-                __table__.c.mini_hash,
-            ]))
-
-        inodes = relationship(
-            FilteredInode,
-            primaryjoin=and_(
-                FilteredInode.size == __table__.c.size,
-                FilteredInode.mini_hash == __table__.c.mini_hash),
-            foreign_keys=list(FilteredInode.__table__.c))
-
-        comm1 = relationship(
-            Commonality1,
-            backref='comm2',
-            foreign_keys=list(__table__.c),
-            primaryjoin=and_(
-                Commonality1.__table__.c.size == __table__.c.size))
-
-    class Commonality3(Base):
-        __table__ = select([
-            FilteredInode.size,
-            FilteredInode.mini_hash,
-            func.count().label('inode_count'),
-            func.count(
-                distinct(FilteredInode.fiemap_hash)).label('fiemap_count'),
-            func.max(FilteredInode.has_updates).label('has_updates'),
-        ]).where(and_(
-            FilteredInode.mini_hash != None,
-            FilteredInode.fiemap_hash != None,
-        )).group_by(
-            FilteredInode.size,
-            FilteredInode.mini_hash,
-        ).having(and_(
-            literal_column('fiemap_count') > 1,
-            literal_column('has_updates') > 0,
-        )).alias('commonality3')
-
-        __mapper_args__ = (
-            dict(primary_key=[
-                __table__.c.size,
-                __table__.c.mini_hash,
-            ]))
-
-        inodes = relationship(
-            FilteredInode,
-            order_by=FilteredInode.ino,
-            primaryjoin=and_(
-                FilteredInode.size == __table__.c.size,
-                FilteredInode.mini_hash == __table__.c.mini_hash),
-            foreign_keys=list(FilteredInode.__table__.c))
-
-        comm2 = relationship(
-            Commonality2,
-            backref='comm3',
-            uselist=False,
-            foreign_keys=list(__table__.c),
-            primaryjoin=and_(
-                Commonality2.__table__.c.size == __table__.c.size,
-                Commonality2.__table__.c.mini_hash == __table__.c.mini_hash))
-
-    def unregister():
-        for cl in reversed(
-            (FilteredInode, Commonality1, Commonality2, Commonality3)
-        ):
-            # Prevent accidental use of an unregistered class
-            # Edit: doesn't work, somehow the classes are still held
-            # by the identity map, an other registry seems to reference
-            # them.
-            #unregister_class(cl)
-            # Unregister
-            del cl._decl_class_registry[cl.__name__]
-
-    # Commonality4 would be a crypto hash, but it's not part of this model atm
-    return FilteredInode, Commonality1, unregister
 
 META = Base.metadata
 
