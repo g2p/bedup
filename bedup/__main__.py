@@ -23,6 +23,7 @@ import collections
 import os
 import sqlalchemy
 import sys
+import warnings
 import xdg.BaseDirectory  # pyxdg, apt:python-xdg
 
 from contextlib import closing
@@ -210,8 +211,16 @@ def cmd_shell(args):
     sess = get_session(args)
     whole_fs = WholeFS(sess)
     from . import model
-    from IPython import embed
-    embed()
+    try:
+        from IPython import embed
+    except ImportError:
+        sys.stderr.write(
+            'Please install bedup[interactive] for this feature\n')
+        return 1
+    with warnings.catch_warnings():
+        warnings.simplefilter('default')
+        warnings.filterwarnings('ignore', module='IPython')
+        embed()
 
 
 def cmd_fake_updates(args):
@@ -261,6 +270,8 @@ def is_in_path(cmd):
 def main(argv):
     progname = 'bedup' if is_in_path('bedup') else 'python -m bedup'
     parser = argparse.ArgumentParser(prog=progname)
+    parser.add_argument(
+        '--debug', action='store_true', help=argparse.SUPPRESS)
     commands = parser.add_subparsers(dest='command', metavar='command')
 
     sp_scan_vol = commands.add_parser(
@@ -362,6 +373,19 @@ Fake inode updates from the latest dedup events (useful for benchmarking).""")
     sql_flags(sp_fake_updates)
 
     args = parser.parse_args(argv[1:])
+    if args.debug:
+        try:
+            from ipdb import launch_ipdb_on_exception
+        except ImportError:
+            sys.stderr.write(
+                'Please install bedup[interactive] for this feature\n')
+            return 1
+        with launch_ipdb_on_exception():
+            # Handle all warnings as errors.
+            # Overrides the default filter that ignores deprecations
+            # and prints the rest.
+            warnings.simplefilter('error')
+            return args.action(args)
     return args.action(args)
 
 

@@ -33,6 +33,8 @@ setup(
     keywords='btrfs deduplication filesystem dedup',
     description='Deduplication for Btrfs filesystems',
     install_requires=install_requires,
+    extras_require={
+        'interactive': ['ipdb']},
     entry_points={
         'console_scripts': [
             'bedup = bedup.__main__:script_main']},

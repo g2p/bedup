@@ -87,7 +87,7 @@ Hacking
 
 ::
 
-   pip install --user pytest tox https://github.com/jbalogh/check
+   pip install --user pytest tox ipdb https://github.com/jbalogh/check
 
 To run the tests::
 
