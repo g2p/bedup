@@ -19,7 +19,6 @@
 from cffi import FFI
 import os
 
-from .compat import PY3
 
 ffi = FFI()
 ffi.cdef('''
@@ -41,9 +40,7 @@ def fopenat(fd, path):
         # IOError.errno is only set if there are exactly two or three
         # arguments.
         raise IOError(ffi.errno, os.strerror(ffi.errno), (fd, path))
-    if PY3:
-        return os.fdopen(fd1, 'br')
-    return os.fdopen(fd1, 'r')
+    return os.fdopen(fd1, 'rb')
 
 
 def fopenat_rw(fd, path):
@@ -54,7 +51,7 @@ def fopenat_rw(fd, path):
     fd1 = lib.openat(fd, path, os.O_RDWR)
     if fd1 < 0:
         raise IOError(ffi.errno, os.strerror(ffi.errno), (fd, path))
-    if PY3:
-        return os.fdopen(fd1, 'br+')
-    return os.fdopen(fd1, 'r+')
+    # XXX putting a descriptive name here requires some kind of wrapper
+    # alternatively, python3.3 and open with dir_fd.
+    return os.fdopen(fd1, 'rb+')
 
