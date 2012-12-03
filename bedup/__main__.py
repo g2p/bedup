@@ -32,13 +32,13 @@ from sqlalchemy.orm import sessionmaker
 
 from .btrfs import find_new, get_root_generation
 from .dedup import dedup_same, FilesInUseError
+from .filesystem import show_vols, WholeFS
 from .ioprio import set_idle_priority
 from .migrations import upgrade_schema
 from .syncfs import syncfs
 from .termupdates import TermTemplate
 from .tracking import (
-    show_vols, track_updated_files, dedup_tracked, reset_vol,
-    WholeFS, fake_updates)
+    track_updated_files, dedup_tracked, reset_vol, fake_updates)
 
 
 APP_NAME = 'bedup'

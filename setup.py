@@ -71,8 +71,8 @@ setup(
     Deduplication for Btrfs.
 
     bedup looks for new and changed files, making sure that multiple copies of
-    identical files share space on disk. It integrates deeply with btrfs so that
-    scans are incremental and low-impact.
+    identical files share space on disk. It integrates deeply with btrfs so
+    that scans are incremental and low-impact.
 
     See `github.com/g2p/bedup <https://github.com/g2p/bedup#readme>`_
     for usage instructions.''')

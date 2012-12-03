@@ -284,9 +284,9 @@ struct btrfs_inode_ref {
  * this is used for both forward and backward root refs
  */
 struct btrfs_root_ref {
-	uint64_t dirid;
-	uint64_t sequence;
-	uint16_t name_len;
+    uint64_t dirid;
+    uint64_t sequence;
+    uint16_t name_len;
     /* name goes here */
     ...;
 };

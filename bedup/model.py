@@ -85,11 +85,12 @@ class SuperBase(object):
 Base = declarative_base(cls=SuperBase)
 
 
-class Filesystem(Base):
+class BtrfsFilesystem(Base):
     id = Column(Integer, primary_key=True)
     uuid = Column(
         Text, CheckConstraint("uuid != ''"),
         unique=True, index=True, nullable=False)
+    __tablename__ = 'Filesystem'
     __table_args__ = (
         dict(
             sqlite_autoincrement=True))
@@ -100,7 +101,7 @@ class Volume(Base):
     # but would require reimplementing an autoincrement
     # sequence outside of sqlite
     id = Column(Integer, primary_key=True)
-    fs_id, fs = FK(Filesystem.id, backref='volumes')
+    fs_id, fs = FK(BtrfsFilesystem.id, backref='volumes')
     __table_args__ = (
         UniqueConstraint(
             'fs_id', 'root_id'),
@@ -193,7 +194,8 @@ Volume.inode_count = column_property(
 class DedupEvent(Base):
     id = Column(Integer, primary_key=True)
     fs_id, fs = FK(
-        Filesystem.id, backref='dedup_events', cascade='all, delete-orphan')
+        BtrfsFilesystem.id,
+        backref='dedup_events', cascade='all, delete-orphan')
 
     item_size = Column(Integer, index=True, nullable=False)
     created = Column(UTCDateTime, index=True, nullable=False)
