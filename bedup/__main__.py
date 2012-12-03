@@ -20,6 +20,7 @@
 
 import argparse
 import collections
+import errno
 import os
 import sqlalchemy
 import sys
@@ -57,7 +58,6 @@ def cmd_find_new(args):
         sep = '\0'
     else:
         sep = '\n'
-    # May raise FindError, let Python print it
     find_new(volume_fd, args.generation, sys.stdout, terse=args.terse, sep=sep)
 
 
@@ -119,7 +119,7 @@ def vol_cmd(args):
         else:
             if args.recurse_subvols:
                 if args.command == 'reset':
-                    sys.stderr.write("You need to list volumes explicitly\n")
+                    sys.stderr.write("You need to list volumes explicitly.\n")
                     return 1
                 # XXX In 3.6, the dedup syscall seems to fail if asked to clone
                 # within the same filesystem but from different mountpoints.
@@ -147,7 +147,6 @@ def vol_cmd(args):
                     tt.format('{elapsed} Flushing %r' % vol.desc)
                     syncfs(vol.fd)
                     tt.format(None)
-                # May raise IOError
                 track_updated_files(sess, vol, tt)
                 vols_by_fs[vol.fs].append(vol)
 
@@ -386,7 +385,14 @@ Fake inode updates from the latest dedup events (useful for benchmarking).""")
             # and prints the rest.
             warnings.simplefilter('error')
             return args.action(args)
-    return args.action(args)
+    try:
+        return args.action(args)
+    except IOError as err:
+        if err.errno == errno.EPERM:
+            sys.stderr.write(
+                "You need to run this command as root.\n")
+            return 1
+        raise
 
 
 def script_main():

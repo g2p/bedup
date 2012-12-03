@@ -586,10 +586,6 @@ def defragment(fd):
     ioctl_pybug(fd, lib.BTRFS_IOC_DEFRAG)
 
 
-class FindError(Exception):
-    pass
-
-
 def find_new(volume_fd, min_generation, results_file, terse, sep):
     args = ffi.new('struct btrfs_ioctl_search_args *')
     args_buffer = ffi.buffer(args)
@@ -609,11 +605,9 @@ def find_new(volume_fd, min_generation, results_file, terse, sep):
     while True:
         sk.nr_items = 4096
 
-        try:
-            ioctl_pybug(
-                volume_fd, lib.BTRFS_IOC_TREE_SEARCH, args_buffer)
-        except IOError as e:
-            raise FindError(e)
+        # May raise EPERM
+        ioctl_pybug(
+            volume_fd, lib.BTRFS_IOC_TREE_SEARCH, args_buffer)
 
         if sk.nr_items == 0:
             break
