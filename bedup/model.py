@@ -346,7 +346,10 @@ def comm_mappings(fs_id, vol_ids):
             (FilteredInode, Commonality1, Commonality2, Commonality3)
         ):
             # Prevent accidental use of an unregistered class
-            unregister_class(cl)
+            # Edit: doesn't work, somehow the classes are still held
+            # by the identity map, an other registry seems to reference
+            # them.
+            #unregister_class(cl)
             # Unregister
             del cl._decl_class_registry[cl.__name__]
 
