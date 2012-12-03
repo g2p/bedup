@@ -55,7 +55,9 @@ Running
 
 ::
 
-    python -m bedup -h
+    bedup -h
+
+If bedup isn't in your path or your sudo path, use ``python -m bedup`` instead.
 
 You'll see a list of supported commands.
 
@@ -63,15 +65,15 @@ You'll see a list of supported commands.
 -  **dedup** runs scan, then deduplicates identical files.
 -  **dedup-files** takes a list of identical files and deduplicates them.
 -  **show** shows btrfs filesystems and their tracking status.
--  **find-new** is a reimplementation of the ``btrfs find-new`` command.
+-  **find-new** is a reimplementation of the ``btrfs subvolume find-new`` command.
 
 To deduplicate a mounted btrfs volume and its non-frozen subvolumes: ::
 
-    sudo python -m bedup dedup /mnt/btrfs
+    sudo bedup dedup /mnt/btrfs
 
 To deduplicate all non-frozen subvolumes in the system: ::
 
-    sudo python -m bedup dedup
+    sudo bedup dedup
 
 bedup will recurse into subvolumes starting with v0.0.8.
 Since cross-subvolume deduplication requires Linux 3.6, users of older
