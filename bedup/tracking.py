@@ -105,10 +105,6 @@ class WholeFS(object):
         for fs in self._iter_other_fs(seen_fs_ids):
             yield fs, None
 
-    def _ensure_root_info(self, fs, vol_fd):
-        if fs.root_info is None:
-            fs.root_info = read_root_tree(vol_fd)
-
     def get_vol(self, volpath, size_cutoff):
         volpath = os.path.normpath(volpath)
         volume_fd = os.open(volpath, os.O_DIRECTORY)
@@ -135,7 +131,7 @@ class WholeFS(object):
             vol.st_dev = os.fstat(volume_fd).st_dev
             # Only use the path as a description, it is liable to change.
             vol.desc = volpath
-            self._ensure_root_info(fs, volume_fd)
+            self._ensure_root_info_read(fs, volume_fd)
             vol.root_info = fs.root_info[vol.root_id]
         return vol
 
@@ -183,7 +179,7 @@ class WholeFS(object):
         loaded = []
         for (uuid, di) in self.device_info.iteritems():
             fs = self.get_fs(uuid)
-            self.ensure_mount_info(fs)
+            self.ensure_root_info(fs)
             if fs.mpoints:
                 mpoints = reduce(lambda l1, l2: l1 + l2, fs.mpoints.values())
                 lo, sta = self._load_visible_vols(fs, mpoints, size_cutoff)
@@ -208,7 +204,7 @@ class WholeFS(object):
         for volpath in volpaths:
             vol = self.get_vol(volpath, size_cutoff)
             if recurse:
-                self.ensure_mount_info(vol.fs)
+                self.ensure_root_info(vol.fs)
                 lo, sta = self._load_visible_vols(
                     vol.fs, [volpath], size_cutoff)
                 skipped = 0
@@ -277,14 +273,26 @@ class WholeFS(object):
                     loaded[vol] = True
         return loaded.keys(), start_vols.values()
 
+    def ensure_root_info(self, fs):
+        if fs.root_info is not None:
+            return
+        self._ensure_mount_info(fs, silence_eperm=False)
+
     def ensure_mount_info(self, fs):
         if fs.mpoints is not None:
             return
+        self._ensure_mount_info(fs, silence_eperm=True)
 
+    def _ensure_mount_info(self, fs, silence_eperm):
         mpoints = defaultdict(list)
         for dev in self.device_info[fs.uuid].devices:
-            self._read_mount_info(fs, dev, mpoints)
+            self._read_mount_info(
+                fs, dev, mpoints, silence_eperm=silence_eperm)
         fs.mpoints = dict(mpoints)
+
+    def _ensure_root_info_read(self, fs, vol_fd):
+        if fs.root_info is None:
+            fs.root_info = read_root_tree(vol_fd)
 
     def ensure_available_paths(self, fs):
         if fs.available_paths is not None:
@@ -307,7 +315,7 @@ class WholeFS(object):
                     os.path.join(smp, relpath) for smp in start_mpoints)
         fs.available_paths = dict(ap)
 
-    def _read_mount_info(self, fs, dev, mpoints):
+    def _read_mount_info(self, fs, dev, mpoints, silence_eperm):
         # Tends to be a less descriptive name, so keep the original
         # name blkid gave for printing.
         dev_canonical = os.path.realpath(dev)
@@ -327,12 +335,12 @@ class WholeFS(object):
                 try:
                     root_id = get_root_id(mpoint_fd)
                 except IOError as e:
-                    if e.errno == errno.EPERM:
+                    if e.errno == errno.EPERM and silence_eperm:
                         # Unlikely to work on the next loop iteration,
                         # but try anyway.
                         continue
                     raise
-                self._ensure_root_info(fs, mpoint_fd)
+                self._ensure_root_info_read(fs, mpoint_fd)
             finally:
                 os.close(mpoint_fd)
             assert fs.root_info[root_id].path == volpath
