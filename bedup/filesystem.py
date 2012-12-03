@@ -24,6 +24,7 @@ import subprocess
 import sys
 
 from collections import namedtuple, defaultdict, OrderedDict
+from itertools import chain
 from uuid import UUID
 
 from .btrfs import (
@@ -44,6 +45,7 @@ DEFAULT_SIZE_CUTOFF = 8 * 1024 ** 2
 
 
 DeviceInfo = namedtuple('DeviceInfo', 'label devices')
+MountInfo = namedtuple('MountInfo', 'internal_path mpoint readonly')
 
 
 class WholeFS(object):
@@ -51,10 +53,10 @@ class WholeFS(object):
 
     def __init__(self, sess):
         # Public functions that rely on sess:
-        # get_vol, get_fs, iter_fs, load_all_visible_vols, load_vols,
+        # get_vol, get_fs, iter_fs, load_all_writable_vols, load_vols,
         # search_available_paths (get_vol doesn't have external users atm)
         # Requiring root:
-        # get_vol, load_all_visible_vols, load_vols.
+        # get_vol, load_all_writable_vols, load_vols.
         # search_available_paths needs root to be useful.
         self.sess = sess
         self._mpoints_by_dev = None
@@ -66,6 +68,7 @@ class WholeFS(object):
             fs.root_info = None
             fs.mpoints = None
             fs.available_paths = None
+            fs.closest_minfo = {}
         else:
             assert hasattr(fs, 'mpoints')
         if uuid in self.device_info:
@@ -73,14 +76,11 @@ class WholeFS(object):
         return fs
 
     def _iter_other_fs(self, excluded_fs_ids):
-        query = self.sess.query(BtrfsFilesystem)
+        query = self.sess.query(BtrfsFilesystem.uuid)
         if excluded_fs_ids:
             query = query.filter(~ BtrfsFilesystem.id.in_(excluded_fs_ids))
-        for fs in query:
-            if not hasattr(fs, 'root_info'):
-                fs.root_info = None
-                fs.mpoints = None
-            yield fs
+        for uuid in query:
+            yield self.get_fs(uuid)
 
     def iter_fs(self):
         seen_fs_ids = []
@@ -126,6 +126,19 @@ class WholeFS(object):
         os.close(vol.fd)
         del vol.fd
 
+    def _closest_minfo(self, fs, volpath):
+        if volpath not in fs.closest_minfo:
+            self._ensure_mount_info(fs)
+            rp = os.path.realpath(volpath)
+
+            minfos = chain(*fs.mpoints.itervalues())
+            # I'm not sure mountinfo enforces realpath?
+            fs.closest_minfo[volpath] = max(
+                (mi for mi in minfos
+                     if rp == mi.mpoint or rp.startswith(mi.mpoint + '/')),
+                key=lambda mi: len(mi))
+        return fs.closest_minfo[volpath]
+
     @property
     def mpoints_by_dev(self):
         if self._mpoints_by_dev is None:
@@ -135,12 +148,15 @@ class WholeFS(object):
                     items = line.split()
                     idx = items.index('-')
                     fs_type = items[idx + 1]
+                    opts1 = items[5].split(',')
+                    opts2 = items[idx + 3].split(',')
+                    readonly = 'ro' in opts1 + opts2
                     if fs_type != 'btrfs':
                         continue
-                    volpath = items[3]
+                    intpath = items[3]
                     mpoint = items[4]
                     dev = os.path.realpath(items[idx + 2])
-                    mbd[dev].append((volpath, mpoint))
+                    mbd[dev].append(MountInfo(intpath, mpoint, readonly))
             self._mpoints_by_dev = dict(mbd)
         return self._mpoints_by_dev
 
@@ -160,27 +176,39 @@ class WholeFS(object):
                     self._device_info[uuid] = DeviceInfo(label, [dev])
         return self._device_info
 
-    def load_all_visible_vols(self, tt, size_cutoff):
-        # All visible non-frozen volumes
+    def load_all_writable_vols(self, tt, size_cutoff):
+        # All visible, non-ro, non-frozen volumes
         # XXX Same failure mode as load_vols
         loaded = []
         for (uuid, di) in self.device_info.iteritems():
             fs = self.get_fs(uuid)
             self._ensure_root_info(fs)
-            if fs.mpoints:
-                mpoints = reduce(lambda l1, l2: l1 + l2, fs.mpoints.values())
-                lo, sta = self._load_visible_vols(fs, mpoints, size_cutoff)
-                skipped = 0
-                for vol in lo:
-                    if vol.root_info.is_frozen:
-                        self._close_vol(vol)
-                        skipped += 1
-                    else:
-                        loaded.append(vol)
-                if skipped:
-                    tt.notify(
-                        'Skipped %d frozen volumes in filesystem %s %s' % (
-                            skipped, fs.label, fs.uuid))
+            if not fs.mpoints:
+                continue
+            mpoints = []
+            for minfos in fs.mpoints.itervalues():
+                for mi in minfos:
+                    mpoints.append(mi.mpoint)
+            lo, sta = self._load_visible_vols(fs, mpoints, size_cutoff)
+            frozen_skipped = ro_skipped = 0
+            for vol in lo:
+                mi = self._closest_minfo(fs, vol.desc)
+                if vol.root_info.is_frozen:
+                    self._close_vol(vol)
+                    frozen_skipped += 1
+                elif mi.readonly:
+                    self._close_vol(vol)
+                    ro_skipped += 1
+                else:
+                    loaded.append(vol)
+            if frozen_skipped:
+                tt.notify(
+                    'Skipped %d frozen volumes in filesystem %s %s' % (
+                        frozen_skipped, fs.label, fs.uuid))
+            if ro_skipped:
+                tt.notify(
+                    'Skipped %d read-only volumes in filesystem %s %s' % (
+                        ro_skipped, fs.label, fs.uuid))
         return loaded
 
     def load_vols(self, volpaths, tt, size_cutoff, recurse):
@@ -262,13 +290,18 @@ class WholeFS(object):
     def _ensure_root_info(self, fs):
         if fs.root_info is not None:
             return
-        self._ensure_mount_info(fs, silence_eperm=False)
+        self._read_mounts_and_roots(fs, need_root_info=True)
 
-    def _ensure_mount_info(self, fs, silence_eperm):
+    def _ensure_mount_info(self, fs):
+        if fs.mpoints is not None:
+            return
+        self._read_mounts_and_roots(fs, need_root_info=False)
+
+    def _read_mounts_and_roots(self, fs, need_root_info):
         mpoints = defaultdict(list)
         for dev in self.device_info[fs.uuid].devices:
-            self._read_mount_info(
-                fs, dev, mpoints, silence_eperm=silence_eperm)
+            self._read_mounts_and_roots1(
+                fs, dev, mpoints, need_root_info=need_root_info)
         fs.mpoints = dict(mpoints)
 
     def _ensure_root_info_read(self, fs, vol_fd):
@@ -279,9 +312,8 @@ class WholeFS(object):
         if fs.available_paths is not None:
             return
 
-        # silence eperm, soft-fail with no root info
-        if fs.mpoints is None:
-            self._ensure_mount_info(fs, silence_eperm=True)
+        self._ensure_mount_info(fs)
+        # soft-fail with no root info
         if not fs.root_info:
             return
 
@@ -289,7 +321,7 @@ class WholeFS(object):
         for (root_id, ri, top_level) in self._iter_subvols(fs, fs.mpoints):
             if top_level:
                 start_mpoints = fs.mpoints[root_id]
-                ap[root_id].update(start_mpoints)
+                ap[root_id].update(mi.mpoint for mi in start_mpoints)
                 start_intpath = ri.path
                 # relpath is more predictable with absolute paths;
                 # otherwise it relies on getcwd (via abspath)
@@ -297,10 +329,10 @@ class WholeFS(object):
             else:
                 relpath = os.path.relpath(ri.path, start_intpath)
                 ap[root_id].update(
-                    os.path.join(smp, relpath) for smp in start_mpoints)
+                    os.path.join(mi.mpoint, relpath) for mi in start_mpoints)
         fs.available_paths = dict(ap)
 
-    def _read_mount_info(self, fs, dev, mpoints, silence_eperm):
+    def _read_mounts_and_roots1(self, fs, dev, mpoints, need_root_info):
         # Tends to be a less descriptive name, so keep the original
         # name blkid gave for printing.
         dev_canonical = os.path.realpath(dev)
@@ -312,15 +344,15 @@ class WholeFS(object):
             # Only if it can be completely safe and read-only.
             return
 
-        for volpath, mpoint in self.mpoints_by_dev[dev_canonical]:
-            mpoint_fd = os.open(mpoint, os.O_DIRECTORY)
+        for minfo in self.mpoints_by_dev[dev_canonical]:
+            mpoint_fd = os.open(minfo.mpoint, os.O_DIRECTORY)
             try:
                 if not is_subvolume(mpoint_fd):
                     continue
                 try:
                     root_id = get_root_id(mpoint_fd)
                 except IOError as e:
-                    if e.errno == errno.EPERM and silence_eperm:
+                    if e.errno == errno.EPERM and not need_root_info:
                         # Unlikely to work on the next loop iteration,
                         # but try anyway.
                         continue
@@ -328,8 +360,8 @@ class WholeFS(object):
                 self._ensure_root_info_read(fs, mpoint_fd)
             finally:
                 os.close(mpoint_fd)
-            assert fs.root_info[root_id].path == volpath
-            mpoints[root_id].append(mpoint)
+            assert fs.root_info[root_id].path == minfo.internal_path
+            mpoints[root_id].append(minfo)
 
 
 BLKID_RE = re.compile(

@@ -123,7 +123,7 @@ def vol_cmd(args):
                     return 1
                 # XXX In 3.6, the dedup syscall seems to fail if asked to clone
                 # within the same filesystem but from different mountpoints.
-                vols = whole_fs.load_all_visible_vols(tt, args.size_cutoff)
+                vols = whole_fs.load_all_writable_vols(tt, args.size_cutoff)
             else:
                 sys.stderr.write(
                     "You either need to enable recursion or to "
