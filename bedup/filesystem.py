@@ -75,13 +75,6 @@ class WholeFS(object):
             fs.label = self.device_info[uuid].label
         return fs
 
-    def _iter_other_fs(self, excluded_fs_ids):
-        query = self.sess.query(BtrfsFilesystem.uuid)
-        if excluded_fs_ids:
-            query = query.filter(~ BtrfsFilesystem.id.in_(excluded_fs_ids))
-        for uuid in query:
-            yield self.get_fs(uuid)
-
     def iter_fs(self):
         seen_fs_ids = []
         for (uuid, di) in self.device_info.iteritems():
@@ -89,8 +82,12 @@ class WholeFS(object):
             seen_fs_ids.append(fs.id)
             yield fs, di
 
-        for fs in self._iter_other_fs(seen_fs_ids):
-            yield fs, None
+        for uuid in self.sess.query(
+            BtrfsFilesystem.uuid
+        ).filter(
+            ~ BtrfsFilesystem.id.in_(seen_fs_ids)
+        ):
+            yield self.get_fs(uuid), None
 
     def get_vol(self, volpath, size_cutoff):
         volpath = os.path.normpath(volpath)
