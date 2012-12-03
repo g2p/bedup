@@ -559,6 +559,7 @@ def track_updated_files(sess, vol, tt):
         sk.min_offset = sh.offset
 
         sk.min_offset += 1
+    tt.format(None)
     vol.last_tracked_generation = top_generation
     vol.last_tracked_size_cutoff = vol.size_cutoff
     sess.commit()
