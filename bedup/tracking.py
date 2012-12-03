@@ -456,13 +456,15 @@ def track_updated_files(sess, vol, tt):
         min_generation = vol.last_tracked_generation + 1
     else:
         min_generation = 0
+    if min_generation > top_generation:
+        tt.notify(
+            'Skipping scan of %r, generation is still %d'
+            % (vol.desc, top_generation))
+        sess.commit()
+        return
     tt.notify(
         'Scanning volume %r generations from %d to %d, with size cutoff %d'
         % (vol.desc, min_generation, top_generation, vol.size_cutoff))
-    if min_generation > top_generation:
-        tt.notify('Generation didn\'t change, skipping scan')
-        sess.commit()
-        return
     tt.format(
         '{elapsed} Updated {desc:counter} items: '
         '{path:truncate-left} {desc}')
