@@ -18,6 +18,7 @@
 
 from sqlalchemy.orm import relationship, column_property, backref as backref_
 from sqlalchemy.orm.exc import NoResultFound
+from sqlalchemy.orm.instrumentation import unregister_class
 from sqlalchemy.sql import and_, select, func, literal_column, distinct
 from sqlalchemy.ext.declarative import declarative_base, declared_attr
 from sqlalchemy.ext.hybrid import hybrid_property
@@ -338,8 +339,17 @@ def comm_mappings(fs_id, vol_ids):
                 Commonality2.__table__.c.size == __table__.c.size,
                 Commonality2.__table__.c.mini_hash == __table__.c.mini_hash))
 
+    def unregister():
+        for cl in reversed(
+            (FilteredInode, Commonality1, Commonality2, Commonality3)
+        ):
+            # Prevent accidental use of an unregistered class
+            unregister_class(cl)
+            # Unregister
+            del cl._decl_class_registry[cl.__name__]
+
     # Commonality4 would be a crypto hash, but it's not part of this model atm
-    return FilteredInode, Commonality1
+    return FilteredInode, Commonality1, unregister
 
 META = Base.metadata
 

@@ -574,7 +574,7 @@ def dedup_tracked(sess, volset, tt):
     # get closed, 1 per volume.
     ofile_reserved = 7 + len(volset)
 
-    FilteredInode, Commonality1 = comm_mappings(fs.id, vol_ids)
+    FilteredInode, Commonality1, unregister = comm_mappings(fs.id, vol_ids)
     query = sess.query(Commonality1)
     le = query.count()
 
@@ -607,6 +607,7 @@ def dedup_tracked(sess, volset, tt):
         dedup_tracked1(sess, tt, ofile_reserved, query, fs, skipped)
 
     sess.commit()
+    unregister()
 
 
 def dedup_tracked1(sess, tt, ofile_reserved, query, fs, skipped):
