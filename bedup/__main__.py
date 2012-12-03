@@ -132,7 +132,11 @@ def vol_cmd(args):
 
         if args.command == 'reset':
             for vol in vols:
-                reset_vol(sess, vol)
+                if user_confirmation(
+                    'Reset tracking status of %s?' % vol.desc, False
+                ):
+                    reset_vol(sess, vol)
+                    print('Reset of %s done' % vol.desc)
 
         if args.command in ('scan', 'dedup'):
             set_idle_priority()
