@@ -71,7 +71,7 @@ To deduplicate a mounted btrfs volume and its non-frozen subvolumes: ::
 
     sudo bedup dedup /mnt/btrfs
 
-To deduplicate all non-frozen subvolumes in the system: ::
+To deduplicate all writable subvolumes in the system: ::
 
     sudo bedup dedup
 
