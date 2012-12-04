@@ -350,9 +350,6 @@ def dedup_tracked1(sess, tt, ofile_reserved, query, fs):
     gc.collect()
 
     for comm1 in query:
-        if len(sess.identity_map) > 300:
-            sess.flush()
-
         size = comm1.size
         space_gain1 += size * (comm1.inode_count - 1)
         tt.update(comm1=comm1)
