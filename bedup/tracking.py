@@ -512,6 +512,8 @@ def dedup_tracked1(sess, tt, ofile_reserved, query, fs):
                         continue
                     sfile = fileset[0]
                     sfd = sfile.fileno()
+                    sdesc = os.path.join(
+                        fd_inodes[sfd].vol.desc, fd_names[sfd])
                     # Commented out, defragmentation can unshare extents.
                     # It can also disable compression as a side-effect.
                     if False:
@@ -520,16 +522,19 @@ def dedup_tracked1(sess, tt, ofile_reserved, query, fs):
                     dfiles_successful = []
                     for dfile in dfiles:
                         dfd = dfile.fileno()
-                        sname = fd_names[sfd]
-                        dname = fd_names[dfd]
+                        ddesc = os.path.join(
+                            fd_inodes[dfd].vol.desc, fd_names[dfd])
                         if not cmp_files(sfile, dfile):
                             # Probably a bug since we just used a crypto hash
-                            tt.notify('Files differ: %r %r' % (sname, dname))
-                            assert False, (sname, dname)
+                            tt.notify('Files differ: %r %r' % (sdesc, ddesc))
+                            assert False, (sdesc, ddesc)
                             continue
                         if clone_data(dest=dfd, src=sfd, check_first=True):
-                            tt.notify('Deduplicated: %r %r' % (sname, dname))
+                            tt.notify(
+                                'Deduplicated:\n- %r\n- %r' % (sdesc, ddesc))
                             dfiles_successful.append(dfile)
+                            space_gain += size
+                            tt.update(space_gain=space_gain)
                         elif False:
                             # Often happens when there are multiple files with
                             # the same extents, plus one with the same size and
@@ -538,10 +543,8 @@ def dedup_tracked1(sess, tt, ofile_reserved, query, fs):
                             # I assume the data is shared in the vfs cache.
                             tt.notify(
                                 'Did not deduplicate (same extents): %r %r' % (
-                                    sname, dname))
+                                    sdesc, ddesc))
                     if dfiles_successful:
-                        space_gain += size * len(dfiles_successful)
-                        tt.update(space_gain=space_gain)
                         evt = DedupEvent(
                             fs=fs, item_size=size, created=system_now())
                         sess.add(evt)
