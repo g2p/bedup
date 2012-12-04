@@ -25,6 +25,7 @@ import os
 import resource
 import stat
 import sys
+import threading
 
 from collections import defaultdict, namedtuple
 from contextlib import closing
@@ -190,6 +191,35 @@ def track_updated_files(sess, vol, tt):
     sess.commit()
 
 
+class Checkpointer(threading.Thread):
+    def __init__(self, bind):
+        super(Checkpointer, self).__init__(name='checkpointer')
+        self.bind = bind
+        self.evt = threading.Event()
+        self.done = False
+
+    def run(self):
+        self.conn = self.bind.connect()
+        while True:
+            self.evt.wait()
+            self.conn.execute('PRAGMA wal_checkpoint;')
+            self.evt.clear()
+            if self.done:
+                return
+
+    def please_checkpoint(self):
+        self.evt.set()
+        if not self.is_alive():
+            self.start()
+
+    def close(self):
+        if not self.is_alive():
+            return
+        self.done = True
+        self.evt.set()
+        self.join()
+
+
 Commonality1 = namedtuple('Commonality1', 'size inode_count inodes')
 
 
@@ -258,6 +288,8 @@ def dedup_tracked(sess, volset, tt):
 
     le = sess.execute(commonality1.count()).scalar()
 
+    checkpointer = Checkpointer(sess.bind)
+
     def clear_updates(window_start, window_end):
         # Can't call update directly on FilteredInode because it is aliased.
         sess.execute(
@@ -269,8 +301,8 @@ def dedup_tracked(sess, volset, tt):
 
         for inode in skipped:
             inode.has_updates = True
-        # This commit is slow, despite the PRAGMA below.
         sess.commit()
+        checkpointer.please_checkpoint()
         # clear the list
         skipped[:] = []
 
@@ -282,15 +314,16 @@ def dedup_tracked(sess, volset, tt):
         # without commonality.
         window_start = sess.query(Inode).order_by(-Inode.size).first().size
 
-        query = windowed_query(
-            sess,
-            window_start,
-            filtered_inode,
-            commonality1,
-            attr=filtered_inode.c.size,
-            per=WINDOW_SIZE,
-            clear_updates=clear_updates)
-        dedup_tracked1(sess, tt, ofile_reserved, query, fs, skipped)
+        with closing(checkpointer):
+            query = windowed_query(
+                sess,
+                window_start,
+                filtered_inode,
+                commonality1,
+                attr=filtered_inode.c.size,
+                per=WINDOW_SIZE,
+                clear_updates=clear_updates)
+            dedup_tracked1(sess, tt, ofile_reserved, query, fs, skipped)
 
     sess.commit()
 
@@ -307,6 +340,8 @@ def dedup_tracked1(sess, tt, ofile_reserved, query, fs, skipped):
     # should disable most commit-time fsync calls without compromising
     # consistency.
     sess.execute('PRAGMA synchronous=NORMAL;')
+    # Checkpointing is now in a thread.
+    sess.execute('PRAGMA wal_autocheckpoint=0;')
     # just to check commit speed
     #sess.commit()
 
