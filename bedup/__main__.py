@@ -153,7 +153,9 @@ def vol_cmd(args):
                 vols_by_fs[vol.fs].append(vol)
 
         if args.command == 'dedup':
-            for volset in vols_by_fs.itervalues():
+            for fs, volset in vols_by_fs.iteritems():
+                tt.notify(
+                    'Deduplicating filesystem %s %s' % (fs.label, fs.uuid))
                 dedup_tracked(sess, volset, tt)
 
         # For safety only.
