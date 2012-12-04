@@ -40,7 +40,7 @@ from .dedup import ImmutableFDs, cmp_files
 from .hashing import mini_hash_from_file, fiemap_hash_from_file
 from .openat import fopenat, fopenat_rw
 from .model import (
-    Inode, Volume, get_or_create, DedupEvent, DedupEventInode)
+    Inode, get_or_create, DedupEvent, DedupEventInode)
 
 
 BUFSIZE = 8192
@@ -223,32 +223,105 @@ class Checkpointer(threading.Thread):
 Commonality1 = namedtuple('Commonality1', 'size inode_count inodes')
 
 
-def windowed_query(sess, window_start, filt, query, attr, per, clear_updates):
-    # [window_start, window_end] is inclusive at both ends
-    # Figure out how to use attr for property access as well?
-    query = query.order_by(-attr)
+class WindowedQuery(object):
+    def __init__(
+        self, sess, unfiltered, filt_crit, window_size=WINDOW_SIZE
+    ):
+        self.sess = sess
+        self.unfiltered = unfiltered
+        self.filt_crit = filt_crit
+        self.window_size = window_size
 
-    while True:
-        query1 = query.where(attr <= window_start).limit(per).alias('q1')
-        li = sess.execute(query1).fetchall()
-        if not li:
-            clear_updates(window_start, 0)
-            return
-        window_start = li[0].size
-        window_end = li[-1].size
-        # If we wanted to be subtle we'd use limits here as well
-        inodes = sess.query(Inode).select_from(filt).join(
-            query1, query1.c.size == Inode.size).order_by(-Inode.size, Inode.ino)
-        inodes_by_size = groupby(inodes, lambda inode: inode.size)
-        for size, inodes in inodes_by_size:
-            inodes = list(inodes)
-            yield Commonality1(size, len(inodes), inodes)
-        clear_updates(window_start, window_end)
-        window_start = window_end - 1
+        self.skipped = []
+
+        # select-only, can't be used for updates
+        self.filtered_s = filtered = select(
+            unfiltered.c
+        ).where(
+            filt_crit
+        ).alias('filtered')
+
+        self.selectable = select([
+            filtered.c.size,
+            func.count().label('inode_count'),
+            func.max(filtered.c.has_updates).label('has_updates')]
+        ).group_by(
+            filtered.c.size,
+        ).having(and_(
+            literal_column('inode_count') > 1,
+            literal_column('has_updates') > 0,
+        ))
+
+    def __len__(self):
+        return self.sess.execute(self.selectable.count()).scalar()
+
+    def __iter__(self):
+        # Clearing updates and logging dedup events can cause frequent
+        # commits, we don't mind losing them in a crash (no need for
+        # durability). SQLite is in WAL mode, so this pragma should disable
+        # most commit-time fsync calls without compromising consistency.
+        self.sess.execute('PRAGMA synchronous=NORMAL;')
+        # Checkpointing is now in the checkpointer thread.
+        self.sess.execute('PRAGMA wal_autocheckpoint=0;')
+        # just to check commit speed
+        #sess.commit()
+
+        self.checkpointer = Checkpointer(self.sess.bind)
+        self.checkpointer.daemon = True
+
+        # [window_start, window_end] is inclusive at both ends
+        selectable = self.selectable.order_by(-self.filtered_s.c.size)
+
+        # This is higher than selectable.first().size, in order to also clear
+        # updates without commonality.
+        window_start = self.sess.query(
+            self.unfiltered.c.size).order_by(
+                -self.unfiltered.c.size).limit(1).scalar()
+
+        while True:
+            window_select = selectable.where(
+                self.filtered_s.c.size <= window_start
+            ).limit(self.window_size).alias('s1')
+            li = self.sess.execute(window_select).fetchall()
+            if not li:
+                self.clear_updates(window_start, 0)
+                return
+            window_start = li[0].size
+            window_end = li[-1].size
+            # If we wanted to be subtle we'd use limits here as well
+            inodes = self.sess.query(Inode).select_from(self.filtered_s).join(
+                window_select, window_select.c.size == Inode.size
+            ).order_by(-Inode.size, Inode.ino)
+            inodes_by_size = groupby(inodes, lambda inode: inode.size)
+            for size, inodes in inodes_by_size:
+                inodes = list(inodes)
+                yield Commonality1(size, len(inodes), inodes)
+            self.clear_updates(window_start, window_end)
+            window_start = window_end - 1
+
+        self.checkpointer.close()
+        # Restore fsync so that the final commit (in dedup_tracked)
+        # will be durable.
+        self.sess.execute('PRAGMA synchronous=FULL;')
+
+    def clear_updates(self, window_start, window_end):
+        # Can't call update directly on FilteredInode because it is aliased.
+        self.sess.execute(
+            self.unfiltered.update().where(and_(
+                self.filt_crit,
+                window_start >= self.unfiltered.c.size >= window_end
+            )).values(
+                has_updates=False))
+
+        for inode in self.skipped:
+            inode.has_updates = True
+        self.sess.commit()
+        self.checkpointer.please_checkpoint()
+        # clear the list
+        self.skipped[:] = []
 
 
 def dedup_tracked(sess, volset, tt):
-    skipped = []
     fs = volset[0].fs
     vol_ids = [vol.id for vol in volset]
     assert all(vol.fs == fs for vol in volset)
@@ -257,93 +330,24 @@ def dedup_tracked(sess, volset, tt):
     # get closed, 1 per volume.
     ofile_reserved = 7 + len(volset)
 
-    fs_id = fs.id
-
     inode = Inode.__table__
-    volume = Volume.__table__
-
-    inode_with_fs = select(
-        inode.c + [volume.c.fs_id]
-    ).where(
-        inode.c.vol_id == volume.c.id
-    ).alias('inode_with_fs')
-
-    filtered_inode = select(
-       inode_with_fs.c
-    ).where(and_(
-       inode_with_fs.c.vol_id.in_(vol_ids),
-       inode_with_fs.c.fs_id == fs_id,
-    )).alias('filtered_inode')
-
-    commonality1 = select([
-       filtered_inode.c.size,
-       func.count().label('inode_count'),
-       func.max(filtered_inode.c.has_updates).label('has_updates')]
-    ).group_by(
-       filtered_inode.c.size,
-    ).having(and_(
-       literal_column('inode_count') > 1,
-       literal_column('has_updates') > 0,
-    ))
-
-    le = sess.execute(commonality1.count()).scalar()
-
-    checkpointer = Checkpointer(sess.bind)
-
-    def clear_updates(window_start, window_end):
-        # Can't call update directly on FilteredInode because it is aliased.
-        sess.execute(
-            Inode.__table__.update().where(and_(
-                Inode.vol_id.in_(vol_ids),
-                window_start >= Inode.size >= window_end
-            )).values(
-                has_updates=False))
-
-        for inode in skipped:
-            inode.has_updates = True
-        sess.commit()
-        checkpointer.please_checkpoint()
-        # clear the list
-        skipped[:] = []
+    inode_filt = inode.c.vol_id.in_(vol_ids)
+    query = WindowedQuery(sess, inode, inode_filt)
+    le = len(query)
 
     if le:
         tt.format('{elapsed} Size group {comm1:counter}/{comm1:total}')
         tt.set_total(comm1=le)
-
-        # This is higher than query.first().size, and will also clear updates
-        # without commonality.
-        window_start = sess.query(Inode).order_by(-Inode.size).first().size
-
-        with closing(checkpointer):
-            query = windowed_query(
-                sess,
-                window_start,
-                filtered_inode,
-                commonality1,
-                attr=filtered_inode.c.size,
-                per=WINDOW_SIZE,
-                clear_updates=clear_updates)
-            dedup_tracked1(sess, tt, ofile_reserved, query, fs, skipped)
-
+        dedup_tracked1(sess, tt, ofile_reserved, query, fs)
     sess.commit()
 
 
-def dedup_tracked1(sess, tt, ofile_reserved, query, fs, skipped):
+def dedup_tracked1(sess, tt, ofile_reserved, query, fs):
     space_gain1 = space_gain2 = space_gain3 = 0
     ofile_soft, ofile_hard = resource.getrlimit(resource.RLIMIT_OFILE)
 
     # Hopefully close any files we left around
     gc.collect()
-
-    # The log can cause frequent commits, we don't mind losing them in
-    # a crash (no need for durability). SQLite is in WAL mode, so this pragma
-    # should disable most commit-time fsync calls without compromising
-    # consistency.
-    sess.execute('PRAGMA synchronous=NORMAL;')
-    # Checkpointing is now in a thread.
-    sess.execute('PRAGMA wal_autocheckpoint=0;')
-    # just to check commit speed
-    #sess.commit()
 
     for comm1 in query:
         if len(sess.identity_map) > 300:
@@ -423,7 +427,7 @@ def dedup_tracked1(sess, tt, ofile_reserved, query, fs, skipped):
                         % (inode_count, size, ofile_soft, ofile_hard))
                     for inode in inodes:
                         if inode.has_updates:
-                            skipped.append(inode)
+                            query.skipped.append(inode)
                     continue
 
             for inode in inodes:
@@ -444,17 +448,17 @@ def dedup_tracked1(sess, tt, ofile_reserved, query, fs, skipped):
                         # The file contains the image of a running process,
                         # we can't open it in write mode.
                         tt.notify('File %r is busy, skipping' % path)
-                        skipped.append(inode)
+                        query.skipped.append(inode)
                         continue
                     elif e.errno == errno.EACCES:
                         # Could be SELinux or immutability
                         tt.notify('Access denied on %r, skipping' % path)
-                        skipped.append(inode)
+                        query.skipped.append(inode)
                         continue
                     elif e.errno == errno.ENOENT:
                         # The file was moved or unlinked by a racing process
                         tt.notify('File %r may have moved, skipping' % path)
-                        skipped.append(inode)
+                        query.skipped.append(inode)
                         continue
                     raise
 
@@ -478,7 +482,7 @@ def dedup_tracked1(sess, tt, ofile_reserved, query, fs, skipped):
                     inode = fd_inodes[fd]
                     if fd in immutability.fds_in_write_use:
                         tt.notify('File %r is in use, skipping' % fd_names[fd])
-                        skipped.append(inode)
+                        query.skipped.append(inode)
                         continue
                     hasher = hashlib.sha1()
                     for buf in iter(lambda: afile.read(BUFSIZE), b''):
@@ -487,10 +491,10 @@ def dedup_tracked1(sess, tt, ofile_reserved, query, fs, skipped):
                     # Gets rid of a race condition
                     st = os.fstat(fd)
                     if st.st_ino != inode.ino:
-                        skipped.append(inode)
+                        query.skipped.append(inode)
                         continue
                     if st.st_dev != inode.vol.st_dev:
-                        skipped.append(inode)
+                        query.skipped.append(inode)
                         continue
 
                     size1 = afile.tell()
@@ -500,7 +504,7 @@ def dedup_tracked1(sess, tt, ofile_reserved, query, fs, skipped):
                             # spurious comm groups in all future invocations.
                             sess.delete(inode)
                         else:
-                            skipped.append(inode)
+                            query.skipped.append(inode)
                         continue
 
                     by_hash[hasher.digest()].append(afile)
@@ -547,8 +551,4 @@ def dedup_tracked1(sess, tt, ofile_reserved, query, fs, skipped):
     tt.notify(
         'Potential space gain: pass 1 %d, pass 2 %d pass 3 %d' % (
             space_gain1, space_gain2, space_gain3))
-    # Restore fsync so that the final commit (in dedup_tracked)
-    # will be durable.
-    sess.commit()
-    sess.execute('PRAGMA synchronous=FULL;')
 
