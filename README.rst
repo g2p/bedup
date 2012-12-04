@@ -63,9 +63,10 @@ You'll see a list of supported commands.
 
 -  **scan** scans volumes to keep track of potentially duplicated files.
 -  **dedup** runs scan, then deduplicates identical files.
--  **dedup-files** takes a list of identical files and deduplicates them.
 -  **show** shows btrfs filesystems and their tracking status.
--  **find-new** is a reimplementation of the ``btrfs subvolume find-new`` command.
+-  **dedup-files** takes a list of identical files and deduplicates them.
+-  **find-new** reimplements the ``btrfs subvolume find-new`` command
+  with a few extra options.
 
 To deduplicate a mounted btrfs volume and its non-frozen subvolumes: ::
 
@@ -101,14 +102,19 @@ Run a style check on edited files::
 
    check.py
 
-Caveats
-=======
+Implementation
+==============
 
-Deduplication is currently implemented using a Btrfs feature that allows
-for cloning data from one file to the other. The cloned ranges become
-shared on disk, saving space. File metadata isn't affected, and later
-changes to one file won't affect the other (this is unlike
-hard-linking).
+Deduplication is implemented using a Btrfs feature that allows for
+cloning data from one file to the other. The cloned ranges become shared
+on disk, saving space.
+
+File metadata isn't affected, and later changes to one file won't affect
+the other (this is unlike hard-linking).
+
+This approach doesn't require special kernel support, but it has two
+downsides: locking has to be done in userspace, and there is no way to
+free space within read-only (frozen) snapshots.
 
 Locking
 -------
@@ -137,7 +143,7 @@ command.
 Subvolumes
 ----------
 
-The clone call is considered a write operation, it won't work on
+The clone call is considered a write operation and won't work on
 read-only snapshots.
 
 Before Linux 3.6, the clone call didn't work across subvolumes.
