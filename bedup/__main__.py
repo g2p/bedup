@@ -29,6 +29,7 @@ import xdg.BaseDirectory  # pyxdg, apt:python-xdg
 
 from contextlib import closing
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy.pool import SingletonThreadPool
 
 from .btrfs import find_new, get_root_generation
 from .dedup import dedup_same, FilesInUseError
@@ -93,7 +94,8 @@ def get_session(args):
     database_exists = (
         os.path.exists(args.db_path) and os.stat(args.db_path).st_size > 0)
     url = sqlalchemy.engine.url.URL('sqlite', database=args.db_path)
-    engine = sqlalchemy.engine.create_engine(url, echo=args.verbose_sql)
+    engine = sqlalchemy.engine.create_engine(
+        url, echo=args.verbose_sql, poolclass=SingletonThreadPool)
     sqlalchemy.event.listen(engine, 'connect', sql_setup)
     upgrade_schema(engine, database_exists)
     Session = sessionmaker(bind=engine)
@@ -154,6 +156,8 @@ def vol_cmd(args):
             for volset in vols_by_fs.itervalues():
                 dedup_tracked(sess, volset, tt)
 
+        # For safety only.
+        # The methods we call from the tracking module are expected to commit.
         sess.commit()
 
 

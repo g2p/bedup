@@ -70,6 +70,7 @@ def fake_updates(sess, max_events):
             ino_count += 1
         if ino_count > 1:
             faked += 1
+    sess.commit()
     return faked
 
 
@@ -225,11 +226,12 @@ Commonality1 = namedtuple('Commonality1', 'size inode_count inodes')
 
 class WindowedQuery(object):
     def __init__(
-        self, sess, unfiltered, filt_crit, window_size=WINDOW_SIZE
+        self, sess, unfiltered, filt_crit, tt, window_size=WINDOW_SIZE
     ):
         self.sess = sess
         self.unfiltered = unfiltered
         self.filt_crit = filt_crit
+        self.tt = tt
         self.window_size = window_size
 
         self.skipped = []
@@ -258,11 +260,13 @@ class WindowedQuery(object):
             self.unfiltered.c.size).order_by(
                 -self.unfiltered.c.size).limit(1).scalar()
 
-
     def __len__(self):
         return self.sess.execute(self.selectable.count()).scalar()
 
     def __iter__(self):
+        # XXX The PRAGMAs below only work with a SingletonThreadPool.
+        # Otherwise they'd have to be re-enabled every time the session
+        # calls self.bind.connect().
         # Clearing updates and logging dedup events can cause frequent
         # commits, we don't mind losing them in a crash (no need for
         # durability). SQLite is in WAL mode, so this pragma should disable
@@ -273,8 +277,8 @@ class WindowedQuery(object):
         # just to check commit speed
         #sess.commit()
 
-        self.checkpointer = Checkpointer(self.sess.bind)
-        self.checkpointer.daemon = True
+        checkpointer = Checkpointer(self.sess.bind)
+        checkpointer.daemon = True
 
         # [window_start, window_end] is inclusive at both ends
         selectable = self.selectable.order_by(-self.filtered_s.c.size)
@@ -290,7 +294,7 @@ class WindowedQuery(object):
             li = self.sess.execute(window_select).fetchall()
             if not li:
                 self.clear_updates(window_start, 0)
-                return
+                break
             window_start = li[0].size
             window_end = li[-1].size
             # If we wanted to be subtle we'd use limits here as well
@@ -302,9 +306,11 @@ class WindowedQuery(object):
                 inodes = list(inodes)
                 yield Commonality1(size, len(inodes), inodes)
             self.clear_updates(window_start, window_end)
+            checkpointer.please_checkpoint()
             window_start = window_end - 1
 
-        self.checkpointer.close()
+        self.tt.format('{elapsed} Committing tracking state')
+        checkpointer.close()
         # Restore fsync so that the final commit (in dedup_tracked)
         # will be durable.
         self.sess.execute('PRAGMA synchronous=FULL;')
@@ -321,7 +327,6 @@ class WindowedQuery(object):
         for inode in self.skipped:
             inode.has_updates = True
         self.sess.commit()
-        self.checkpointer.please_checkpoint()
         # clear the list
         self.skipped[:] = []
 
@@ -340,7 +345,7 @@ def dedup_tracked(sess, volset, tt):
 
     inode = Inode.__table__
     inode_filt = inode.c.vol_id.in_(vol_ids)
-    query = WindowedQuery(sess, inode, inode_filt)
+    query = WindowedQuery(sess, inode, inode_filt, tt)
     le = len(query)
 
     if le:
@@ -353,6 +358,7 @@ def dedup_tracked(sess, volset, tt):
     else:
         query.clear_all_updates()
     sess.commit()
+    tt.format(None)
 
 
 def dedup_tracked1(sess, tt, ofile_reserved, query, fs):
