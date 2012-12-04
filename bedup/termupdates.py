@@ -152,6 +152,10 @@ class TermTemplate(object):
                     elif format_spec == 'truncate-left':
                         # XXX NotImplemented
                         self._stream.write(self._kws.get(field_name, ''))
+                    elif format_spec == 'size':
+                        # XXX stub
+                        self._stream.write(
+                            '%d' % (self._kws.get(field_name, 0)))
                     elif format_spec == 'counter':
                         self._stream.write(
                             '%d' % self._kws_counter[field_name])

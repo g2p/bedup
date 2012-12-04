@@ -84,7 +84,7 @@ def track_updated_files(sess, vol, tt):
         min_generation = 0
     if min_generation > top_generation:
         tt.notify(
-            'Skipping scan of %r, generation is still %d'
+            'Not scanning %r, generation is still %d'
             % (vol.desc, top_generation))
         sess.commit()
         return
@@ -336,14 +336,17 @@ def dedup_tracked(sess, volset, tt):
     le = len(query)
 
     if le:
-        tt.format('{elapsed} Size group {comm1:counter}/{comm1:total}')
+        tt.format(
+            '{elapsed} Size group {comm1:counter}/{comm1:total} '
+            'sampled {mhash:counter} hashed {fhash:counter} '
+            'freed {space_gain:size}')
         tt.set_total(comm1=le)
         dedup_tracked1(sess, tt, ofile_reserved, query, fs)
     sess.commit()
 
 
 def dedup_tracked1(sess, tt, ofile_reserved, query, fs):
-    space_gain1 = space_gain2 = space_gain3 = 0
+    space_gain = 0
     ofile_soft, ofile_hard = resource.getrlimit(resource.RLIMIT_OFILE)
 
     # Hopefully close any files we left around
@@ -351,7 +354,6 @@ def dedup_tracked1(sess, tt, ofile_reserved, query, fs):
 
     for comm1 in query:
         size = comm1.size
-        space_gain1 += size * (comm1.inode_count - 1)
         tt.update(comm1=comm1)
         by_mh = defaultdict(list)
         for inode in comm1.inodes:
@@ -382,13 +384,13 @@ def dedup_tracked1(sess, tt, ofile_reserved, query, fs):
                 continue
             with closing(fopenat(inode.vol.fd, path)) as rfile:
                 by_mh[mini_hash_from_file(inode, rfile)].append(inode)
+                tt.update(mhash=None)
 
         for inodes in by_mh.itervalues():
             inode_count = len(inodes)
             if inode_count < 2:
                 continue
             fies = set()
-            space_gain2 += size * (inode_count - 1)
             for inode in inodes:
                 try:
                     path = lookup_ino_path_one(inode.vol.fd, inode.ino)
@@ -403,7 +405,6 @@ def dedup_tracked1(sess, tt, ofile_reserved, query, fs):
             if len(fies) < 2:
                 continue
 
-            space_gain3 += size * (inode_count - 1)
             files = []
             fds = []
             fd_names = {}
@@ -505,6 +506,7 @@ def dedup_tracked1(sess, tt, ofile_reserved, query, fs):
                         continue
 
                     by_hash[hasher.digest()].append(afile)
+                    tt.update(fhash=None)
 
                 for fileset in by_hash.itervalues():
                     if len(fileset) < 2:
@@ -534,6 +536,8 @@ def dedup_tracked1(sess, tt, ofile_reserved, query, fs):
                                 'Did not deduplicate (same extents): %r %r' % (
                                     sname, dname))
                     if dfiles_successful:
+                        space_gain += size * len(dfiles_successful)
+                        tt.update(space_gain=space_gain)
                         evt = DedupEvent(
                             fs=fs, item_size=size, created=system_now())
                         sess.add(evt)
@@ -545,7 +549,4 @@ def dedup_tracked1(sess, tt, ofile_reserved, query, fs):
                         sess.commit()
 
     tt.format(None)
-    tt.notify(
-        'Potential space gain: pass 1 %d, pass 2 %d pass 3 %d' % (
-            space_gain1, space_gain2, space_gain3))
 
