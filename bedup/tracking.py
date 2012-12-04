@@ -446,19 +446,16 @@ def dedup_tracked1(sess, tt, ofile_reserved, query, fs):
                         # The file contains the image of a running process,
                         # we can't open it in write mode.
                         tt.notify('File %r is busy, skipping' % path)
-                        query.skipped.append(inode)
-                        continue
                     elif e.errno == errno.EACCES:
                         # Could be SELinux or immutability
                         tt.notify('Access denied on %r, skipping' % path)
-                        query.skipped.append(inode)
-                        continue
                     elif e.errno == errno.ENOENT:
                         # The file was moved or unlinked by a racing process
                         tt.notify('File %r may have moved, skipping' % path)
-                        query.skipped.append(inode)
-                        continue
-                    raise
+                    else:
+                        raise
+                    query.skipped.append(inode)
+                    continue
 
                 # It's not completely guaranteed we have the right inode,
                 # there may still be race conditions at this point.
@@ -475,6 +472,8 @@ def dedup_tracked1(sess, tt, ofile_reserved, query, fs):
                 # Enter this context last
                 immutability = stack.enter_context(ImmutableFDs(fds))
 
+                # With a false positive, some kind of cmp pass that compares
+                # all files at once might be more efficient that hashing.
                 for afile in files:
                     fd = afile.fileno()
                     inode = fd_inodes[fd]
@@ -531,7 +530,12 @@ def dedup_tracked1(sess, tt, ofile_reserved, query, fs):
                         if clone_data(dest=dfd, src=sfd, check_first=True):
                             tt.notify('Deduplicated: %r %r' % (sname, dname))
                             dfiles_successful.append(dfile)
-                        else:
+                        elif False:
+                            # Often happens when there are multiple files with
+                            # the same extents, plus one with the same size and
+                            # mini-hash but a difference elsewhere.
+                            # We hash the same extents multiple times, but
+                            # I assume the data is shared in the vfs cache.
                             tt.notify(
                                 'Did not deduplicate (same extents): %r %r' % (
                                     sname, dname))
