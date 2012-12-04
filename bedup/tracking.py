@@ -252,6 +252,13 @@ class WindowedQuery(object):
             literal_column('has_updates') > 0,
         ))
 
+        # This is higher than selectable.first().size, in order to also clear
+        # updates without commonality.
+        self.upper_bound = self.sess.query(
+            self.unfiltered.c.size).order_by(
+                -self.unfiltered.c.size).limit(1).scalar()
+
+
     def __len__(self):
         return self.sess.execute(self.selectable.count()).scalar()
 
@@ -274,9 +281,7 @@ class WindowedQuery(object):
 
         # This is higher than selectable.first().size, in order to also clear
         # updates without commonality.
-        window_start = self.sess.query(
-            self.unfiltered.c.size).order_by(
-                -self.unfiltered.c.size).limit(1).scalar()
+        window_start = self.upper_bound
 
         while True:
             window_select = selectable.where(
@@ -320,6 +325,9 @@ class WindowedQuery(object):
         # clear the list
         self.skipped[:] = []
 
+    def clear_all_updates(self):
+        return self.clear_updates(self.upper_bound, 0)
+
 
 def dedup_tracked(sess, volset, tt):
     fs = volset[0].fs
@@ -342,6 +350,8 @@ def dedup_tracked(sess, volset, tt):
             'freed {space_gain:size}')
         tt.set_total(comm1=le)
         dedup_tracked1(sess, tt, ofile_reserved, query, fs)
+    else:
+        query.clear_all_updates()
     sess.commit()
 
 
@@ -554,6 +564,5 @@ def dedup_tracked1(sess, tt, ofile_reserved, query, fs):
                                 event=evt, ino=inode.ino, vol=inode.vol)
                             sess.add(evti)
                         sess.commit()
-
     tt.format(None)
 
