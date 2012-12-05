@@ -29,29 +29,28 @@ lib = ffi.verify('''
     ''', ext_package='bedup')
 
 
-def fopenat(fd, path):
+def openat(base_fd, path, flags):
+    fd = lib.openat(base_fd, path, flags)
+    if fd < 0:
+        # There's a little bit of magic here:
+        # IOError.errno is only set if there are exactly two or three
+        # arguments.
+        raise IOError(ffi.errno, os.strerror(ffi.errno), (base_fd, path))
+    return fd
+
+
+def fopenat(base_fd, path):
     """
     Does openat read-only, then does fdopen to get a file object
     """
 
-    fd1 = lib.openat(fd, path, os.O_RDONLY)
-    if fd1 < 0:
-        # There's a little bit of magic here:
-        # IOError.errno is only set if there are exactly two or three
-        # arguments.
-        raise IOError(ffi.errno, os.strerror(ffi.errno), (fd, path))
-    return os.fdopen(fd1, 'rb')
+    return os.fdopen(openat(base_fd, path, os.O_RDONLY), 'rb')
 
 
-def fopenat_rw(fd, path):
+def fopenat_rw(base_fd, path):
     """
     Does openat read-write, then does fdopen to get a file object
     """
 
-    fd1 = lib.openat(fd, path, os.O_RDWR)
-    if fd1 < 0:
-        raise IOError(ffi.errno, os.strerror(ffi.errno), (fd, path))
-    # XXX putting a descriptive name here requires some kind of wrapper
-    # alternatively, python3.3 and open with dir_fd.
-    return os.fdopen(fd1, 'rb+')
+    return os.fdopen(openat(base_fd, path, os.O_RDWR), 'rb+')
 

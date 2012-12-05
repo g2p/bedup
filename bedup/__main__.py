@@ -112,7 +112,8 @@ def vol_cmd(args):
         tt = stack.enter_context(closing(TermTemplate()))
         # Adds about 1s to cold startup
         sess = get_session(args)
-        whole_fs = stack.enter_context(closing(WholeFS(sess)))
+        whole_fs = WholeFS(sess, size_cutoff=args.size_cutoff)
+        stack.enter_context(closing(whole_fs))
 
         if args.volume:
             # Include cli args and their non-frozen descendants.
@@ -120,13 +121,13 @@ def vol_cmd(args):
             # kernel grows extra support, deduplication will fail, and the
             # other commands aren't terribly useful without deduplication.
             vols = whole_fs.load_vols(
-                args.volume, tt, args.size_cutoff, args.recurse_subvols)
+                args.volume, tt, args.recurse_subvols)
         else:
             if args.recurse_subvols:
                 if args.command == 'reset':
                     sys.stderr.write("You need to list volumes explicitly.\n")
                     return 1
-                vols = whole_fs.load_all_writable_vols(tt, args.size_cutoff)
+                vols = whole_fs.load_all_writable_vols(tt)
             else:
                 sys.stderr.write(
                     "You either need to enable recursion or to "
@@ -138,16 +139,16 @@ def vol_cmd(args):
         if args.command == 'reset':
             for vol in vols:
                 if user_confirmation(
-                    'Reset tracking status of %s?' % vol.desc, False
+                    'Reset tracking status of {}?'.format(vol), False
                 ):
                     reset_vol(sess, vol)
-                    print('Reset of %s done' % vol.desc)
+                    print('Reset of {} done'.format(vol))
 
         if args.command in ('scan', 'dedup'):
             set_idle_priority()
             for vol in vols:
                 if args.flush:
-                    tt.format('{elapsed} Flushing %r' % vol.desc)
+                    tt.format('{elapsed} Flushing %s' % (vol,))
                     syncfs(vol.fd)
                     tt.format(None)
                 track_updated_files(sess, vol, tt)
@@ -202,15 +203,14 @@ def cmd_forget_fs(args):
     whole_fs = WholeFS(sess)
     filesystems = [whole_fs.get_fs(uuid) for uuid in args.uuid]
     for fs in filesystems:
-        desc = fs.uuid
-        if not user_confirmation('Wipe all data about fs %s?' % desc, False):
+        if not user_confirmation('Wipe all data about fs %s?' % fs, False):
             continue
         for vol in fs.volumes:
             # A lot of things will cascade
             sess.delete(vol)
         sess.delete(fs)
         sess.commit()
-        print('Wiped all data about %s' % desc)
+        print('Wiped all data about %s' % fs)
 
 
 def cmd_shell(args):
@@ -392,14 +392,15 @@ Fake inode updates from the latest dedup events (useful for benchmarking).""")
             # and prints the rest.
             warnings.simplefilter('error')
             return args.action(args)
-    try:
-        return args.action(args)
-    except IOError as err:
-        if err.errno == errno.EPERM:
-            sys.stderr.write(
-                "You need to run this command as root.\n")
-            return 1
-        raise
+    else:
+        try:
+            return args.action(args)
+        except IOError as err:
+            if err.errno == errno.EPERM:
+                sys.stderr.write(
+                    "You need to run this command as root.\n")
+                return 1
+            raise
 
 
 def script_main():

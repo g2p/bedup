@@ -34,7 +34,7 @@ from itertools import groupby
 from sqlalchemy.sql import and_, select, func, literal_column
 
 from .platform.btrfs import (
-    lookup_ino_path_one, get_root_generation, clone_data, defragment)
+    get_root_generation, clone_data, defragment)
 from .platform.openat import fopenat, fopenat_rw
 
 from .datetime import system_now
@@ -86,13 +86,13 @@ def track_updated_files(sess, vol, tt):
         min_generation = 0
     if min_generation > top_generation:
         tt.notify(
-            'Not scanning %r, generation is still %d'
-            % (vol.desc, top_generation))
+            'Not scanning %s, generation is still %d'
+            % (vol, top_generation))
         sess.commit()
         return
     tt.notify(
-        'Scanning volume %r generations from %d to %d, with size cutoff %d'
-        % (vol.desc, min_generation, top_generation, vol.size_cutoff))
+        'Scanning volume %s generations from %d to %d, with size cutoff %d'
+        % (vol, min_generation, top_generation, vol.size_cutoff))
     tt.format(
         '{elapsed} Updated {desc:counter} items: '
         '{path:truncate-left} {desc}')
@@ -159,12 +159,12 @@ def track_updated_files(sess, vol, tt):
                     continue
                 ino = sh.objectid
                 inode, inode_created = get_or_create(
-                    sess, Inode, vol=vol, ino=ino)
+                    sess, Inode, vol=vol.impl, ino=ino)
                 inode.size = size
                 inode.has_updates = True
 
                 try:
-                    path = lookup_ino_path_one(vol.fd, ino)
+                    path = vol.lookup_one_path(inode)
                 except IOError as e:
                     tt.notify(
                         'Error at path lookup of inode %d: %r' % (ino, e))
@@ -337,7 +337,7 @@ class WindowedQuery(object):
 
 def dedup_tracked(sess, volset, tt):
     fs = volset[0].fs
-    vol_ids = [vol.id for vol in volset]
+    vol_ids = [vol.impl.id for vol in volset]
     assert all(vol.fs == fs for vol in volset)
 
     # 3 for stdio, 3 for sqlite (wal mode), 1 that somehow doesn't
@@ -384,7 +384,7 @@ def dedup_tracked1(sess, tt, ofile_reserved, query, fs):
             # updated (as opposed to extent updates) to be able to actually
             # cache the result
             try:
-                path = lookup_ino_path_one(inode.vol.fd, inode.ino)
+                path = inode.vol.live.lookup_one_path(inode)
             except IOError as e:
                 if e.errno != errno.ENOENT:
                     raise
@@ -399,7 +399,7 @@ def dedup_tracked1(sess, tt, ofile_reserved, query, fs):
                 # inode.
                 sess.delete(inode)
                 continue
-            with closing(fopenat(inode.vol.fd, path)) as rfile:
+            with closing(fopenat(inode.vol.live.fd, path)) as rfile:
                 by_mh[mini_hash_from_file(inode, rfile)].append(inode)
                 tt.update(mhash=None)
 
@@ -410,13 +410,13 @@ def dedup_tracked1(sess, tt, ofile_reserved, query, fs):
             fies = set()
             for inode in inodes:
                 try:
-                    path = lookup_ino_path_one(inode.vol.fd, inode.ino)
+                    path = inode.vol.live.lookup_one_path(inode)
                 except IOError as e:
                     if e.errno != errno.ENOENT:
                         raise
                     sess.delete(inode)
                     continue
-                with closing(fopenat(inode.vol.fd, path)) as rfile:
+                with closing(fopenat(inode.vol.live.fd, path)) as rfile:
                     fies.add(fiemap_hash_from_file(rfile))
 
             if len(fies) < 2:
@@ -450,14 +450,14 @@ def dedup_tracked1(sess, tt, ofile_reserved, query, fs):
                 # yet because the crypto hash might eliminate it.
                 # We may also want to defragment the source.
                 try:
-                    path = lookup_ino_path_one(inode.vol.fd, inode.ino)
+                    path = inode.vol.live.lookup_one_path(inode)
                 except IOError as e:
                     if e.errno == errno.ENOENT:
                         sess.delete(inode)
                         continue
                     raise
                 try:
-                    afile = fopenat_rw(inode.vol.fd, path)
+                    afile = fopenat_rw(inode.vol.live.fd, path)
                 except IOError as e:
                     if e.errno == errno.ETXTBSY:
                         # The file contains the image of a running process,
@@ -507,7 +507,7 @@ def dedup_tracked1(sess, tt, ofile_reserved, query, fs):
                     if st.st_ino != inode.ino:
                         query.skipped.append(inode)
                         continue
-                    if st.st_dev != inode.vol.st_dev:
+                    if st.st_dev != inode.vol.live.st_dev:
                         query.skipped.append(inode)
                         continue
 
@@ -529,8 +529,7 @@ def dedup_tracked1(sess, tt, ofile_reserved, query, fs):
                         continue
                     sfile = fileset[0]
                     sfd = sfile.fileno()
-                    sdesc = os.path.join(
-                        fd_inodes[sfd].vol.desc, fd_names[sfd])
+                    sdesc = fd_inodes[sfd].vol.live.describe_path(fd_names[sfd])
                     # Commented out, defragmentation can unshare extents.
                     # It can also disable compression as a side-effect.
                     if False:
@@ -539,8 +538,8 @@ def dedup_tracked1(sess, tt, ofile_reserved, query, fs):
                     dfiles_successful = []
                     for dfile in dfiles:
                         dfd = dfile.fileno()
-                        ddesc = os.path.join(
-                            fd_inodes[dfd].vol.desc, fd_names[dfd])
+                        ddesc = fd_inodes[dfd].vol.live.describe_path(
+                            fd_names[dfd])
                         if not cmp_files(sfile, dfile):
                             # Probably a bug since we just used a crypto hash
                             tt.notify('Files differ: %r %r' % (sdesc, ddesc))
@@ -563,7 +562,7 @@ def dedup_tracked1(sess, tt, ofile_reserved, query, fs):
                                     sdesc, ddesc))
                     if dfiles_successful:
                         evt = DedupEvent(
-                            fs=fs, item_size=size, created=system_now())
+                            fs=fs.impl, item_size=size, created=system_now())
                         sess.add(evt)
                         for afile in [sfile] + dfiles_successful:
                             inode = fd_inodes[afile.fileno()]
