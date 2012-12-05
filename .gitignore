@@ -3,7 +3,7 @@
 /.tox/
 /MANIFEST
 /bedup.egg-info/
-/bedup/__pycache__/
-/bedup/_cffi__*.so
+/bedup/platform/__pycache__/
+/bedup/platform/_cffi__*.so
 /build/
 /dist/

@@ -22,7 +22,8 @@ import cffi
 import posixpath
 import uuid
 
-from .compat import buffer_to_bytes
+from ..compat import buffer_to_bytes
+
 from .fiemap import same_extents
 
 from os import getcwd  # XXX

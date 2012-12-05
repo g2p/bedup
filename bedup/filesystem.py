@@ -27,9 +27,10 @@ from collections import namedtuple, defaultdict, OrderedDict
 from itertools import chain
 from uuid import UUID
 
-from .btrfs import (
+from .platform.btrfs import (
     get_fsid, get_root_id,
     read_root_tree, BTRFS_FIRST_FREE_OBJECTID)
+
 from .model import (
     BtrfsFilesystem, Volume, get_or_create, VolumePathHistory)
 

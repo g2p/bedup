@@ -33,12 +33,13 @@ from contextlib2 import ExitStack
 from itertools import groupby
 from sqlalchemy.sql import and_, select, func, literal_column
 
-from .btrfs import (
+from .platform.btrfs import (
     lookup_ino_path_one, get_root_generation, clone_data, defragment)
+from .platform.openat import fopenat, fopenat_rw
+
 from .datetime import system_now
 from .dedup import ImmutableFDs, cmp_files
 from .hashing import mini_hash_from_file, fiemap_hash_from_file
-from .openat import fopenat, fopenat_rw
 from .model import (
     Inode, get_or_create, DedupEvent, DedupEventInode)
 
@@ -75,7 +76,7 @@ def fake_updates(sess, max_events):
 
 
 def track_updated_files(sess, vol, tt):
-    from .btrfs import ffi, u64_max
+    from .platform.btrfs import ffi, u64_max
 
     top_generation = get_root_generation(vol.fd)
     if (vol.last_tracked_size_cutoff is not None

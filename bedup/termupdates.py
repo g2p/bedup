@@ -20,7 +20,7 @@ import collections
 import string
 import sys
 
-from .time import monotonic_time
+from .platform.time import monotonic_time
 
 _formatter = string.Formatter()
 

@@ -7,9 +7,10 @@ import tempfile
 
 import pytest
 
+from .platform.syncfs import syncfs
+from .platform.btrfs import lookup_ino_paths, BTRFS_FIRST_FREE_OBJECTID
+
 from .__main__ import main
-from .syncfs import syncfs
-from .btrfs import lookup_ino_paths, BTRFS_FIRST_FREE_OBJECTID
 from . import compat  # monkey-patch check_output in py2.6
 
 # Placate pyflakes

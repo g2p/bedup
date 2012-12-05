@@ -31,12 +31,13 @@ from contextlib import closing
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import SingletonThreadPool
 
-from .btrfs import find_new, get_root_generation
+from .platform.btrfs import find_new, get_root_generation
+from .platform.ioprio import set_idle_priority
+from .platform.syncfs import syncfs
+
 from .dedup import dedup_same, FilesInUseError
 from .filesystem import show_vols, WholeFS
-from .ioprio import set_idle_priority
 from .migrations import upgrade_schema
-from .syncfs import syncfs
 from .termupdates import TermTemplate
 from .tracking import (
     track_updated_files, dedup_tracked, reset_vol, fake_updates)

@@ -3,15 +3,8 @@
 from setuptools import setup
 from sys import version_info
 
-import bedup.btrfs
-import bedup.chattr
-import bedup.fiemap
-import bedup.futimens
-import bedup.ioprio
-import bedup.openat
-import bedup.syncfs
-import bedup.time
-import bedup.unshare
+from bedup.platform import get_ext_modules
+
 
 install_requires = [
     'alembic',  # XXX I need Alembic, but not Mako or MarkupSafe.
@@ -39,20 +32,11 @@ setup(
     entry_points={
         'console_scripts': [
             'bedup = bedup.__main__:script_main']},
-    ext_modules=[
-        bedup.btrfs.ffi.verifier.get_extension(),
-        bedup.chattr.ffi.verifier.get_extension(),
-        bedup.fiemap.ffi.verifier.get_extension(),
-        bedup.futimens.ffi.verifier.get_extension(),
-        bedup.ioprio.ffi.verifier.get_extension(),
-        bedup.openat.ffi.verifier.get_extension(),
-        bedup.syncfs.ffi.verifier.get_extension(),
-        bedup.time.ffi.verifier.get_extension(),
-        bedup.unshare.ffi.verifier.get_extension(),
-    ],
+    ext_modules=get_ext_modules(),
     ext_package='bedup',
     packages=[
         'bedup',
+        'bedup.platform',
     ],
     use_2to3=True,
     zip_safe=False,  # cargo-culted from the CFFI docs

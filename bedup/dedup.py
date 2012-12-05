@@ -25,9 +25,9 @@ import os
 import re
 import stat
 
-from .btrfs import clone_data, defragment as btrfs_defragment
-from .chattr import editflags, FS_IMMUTABLE_FL
-from .futimens import fstat_ns, futimens
+from .platform.btrfs import clone_data, defragment as btrfs_defragment
+from .platform.chattr import editflags, FS_IMMUTABLE_FL
+from .platform.futimens import fstat_ns, futimens
 
 
 BUFSIZE = 8192

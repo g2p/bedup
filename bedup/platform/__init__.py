@@ -1,3 +1,5 @@
+# vim: set fileencoding=utf-8 sw=4 ts=4 et :
+
 # bedup - Btrfs deduplication
 # Copyright (C) 2012 Gabriel de Perthuis <g2p.code+bedup@gmail.com>
 #
@@ -16,21 +18,11 @@
 # You should have received a copy of the GNU General Public License
 # along with bedup.  If not, see <http://www.gnu.org/licenses/>.
 
-from zlib import adler32
+from . import (
+    btrfs, chattr, fiemap, futimens, ioprio, openat, syncfs, time, unshare)
 
-from .platform.fiemap import fiemap
+MODS = (btrfs, chattr, fiemap, futimens, ioprio, openat, syncfs, time, unshare)
 
-
-def mini_hash_from_file(inode, rfile):
-    # A very cheap, very partial hash for quick disambiguation
-    # Won't help with things like zeroed or sparse files.
-    # The mini_hash for those is 0x10000001
-    rfile.seek(int(inode.size * .3))
-    # bitops to make unsigned, for better readability
-    return adler32(rfile.read(4096)) & 0xffffffff
-
-
-def fiemap_hash_from_file(rfile):
-    extents = tuple(fiemap(rfile.fileno()))
-    return hash(extents)
+def get_ext_modules():
+    return [mod.ffi.verifier.get_extension() for mod in MODS]
 
