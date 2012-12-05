@@ -92,7 +92,7 @@ Hacking
 
 To run the tests::
 
-   py.test -s
+   sudo py.test -s bedup
 
 To test compatibility and packaging as well::
 
