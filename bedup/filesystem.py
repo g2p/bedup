@@ -87,6 +87,7 @@ class WholeFS(object):
         ).filter(
             ~ BtrfsFilesystem.id.in_(seen_fs_ids)
         ):
+            uuid, = uuid
             yield self.get_fs(uuid), None
 
     def get_vol(self, volpath, size_cutoff):
