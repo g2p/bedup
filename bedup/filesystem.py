@@ -165,6 +165,7 @@ class WholeFS(object):
                 'blkid -s LABEL -s UUID -t TYPE=btrfs'.split()
             ).splitlines():
                 dev, label, uuid = BLKID_RE.match(line).groups()
+                uuid = uuid.decode('ascii')
                 if uuid in self._device_info:
                     # btrfs raid
                     assert self._device_info[uuid].label == label
