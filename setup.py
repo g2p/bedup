@@ -11,6 +11,7 @@ import bedup.ioprio
 import bedup.openat
 import bedup.syncfs
 import bedup.time
+import bedup.unshare
 
 install_requires = [
     'alembic',  # XXX I need Alembic, but not Mako or MarkupSafe.
@@ -47,6 +48,7 @@ setup(
         bedup.openat.ffi.verifier.get_extension(),
         bedup.syncfs.ffi.verifier.get_extension(),
         bedup.time.ffi.verifier.get_extension(),
+        bedup.unshare.ffi.verifier.get_extension(),
     ],
     ext_package='bedup',
     packages=[
