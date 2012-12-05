@@ -28,6 +28,7 @@ import warnings
 import xdg.BaseDirectory  # pyxdg, apt:python-xdg
 
 from contextlib import closing
+from contextlib2 import ExitStack
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import SingletonThreadPool
 
@@ -107,10 +108,11 @@ def get_session(args):
 def vol_cmd(args):
     if args.command == 'dedup-vol':
         args.command = 'dedup'
-    with closing(TermTemplate()) as tt:
+    with ExitStack() as stack:
+        tt = stack.enter_context(closing(TermTemplate()))
         # Adds about 1s to cold startup
         sess = get_session(args)
-        whole_fs = WholeFS(sess)
+        whole_fs = stack.enter_context(closing(WholeFS(sess)))
 
         if args.volume:
             # Include cli args and their non-frozen descendants.
@@ -124,8 +126,6 @@ def vol_cmd(args):
                 if args.command == 'reset':
                     sys.stderr.write("You need to list volumes explicitly.\n")
                     return 1
-                # XXX In 3.6, the dedup syscall seems to fail if asked to clone
-                # within the same filesystem but from different mountpoints.
                 vols = whole_fs.load_all_writable_vols(tt, args.size_cutoff)
             else:
                 sys.stderr.write(

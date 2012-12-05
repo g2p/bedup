@@ -22,6 +22,7 @@ import os
 import re
 import subprocess
 import sys
+import tempfile
 
 from collections import namedtuple, defaultdict, OrderedDict
 from itertools import chain
@@ -30,6 +31,7 @@ from uuid import UUID
 from .platform.btrfs import (
     get_fsid, get_root_id,
     read_root_tree, BTRFS_FIRST_FREE_OBJECTID)
+from .platform.unshare import unshare, CLONE_NEWNS
 
 from .model import (
     BtrfsFilesystem, Volume, get_or_create, VolumePathHistory)
@@ -62,6 +64,7 @@ class WholeFS(object):
         self.sess = sess
         self._mpoints_by_dev = None
         self._device_info = None
+        self._unshared = False
 
     def get_fs(self, uuid):
         fs, fs_created = get_or_create(self.sess, BtrfsFilesystem, uuid=uuid)
@@ -70,6 +73,7 @@ class WholeFS(object):
             fs.mpoints = None
             fs.available_paths = None
             fs.closest_minfo = {}
+            fs._priv_mpoint = None
         else:
             assert hasattr(fs, 'mpoints')
         if uuid in self.device_info:
@@ -141,6 +145,7 @@ class WholeFS(object):
     @property
     def mpoints_by_dev(self):
         if self._mpoints_by_dev is None:
+            assert not self._unshared
             mbd = defaultdict(list)
             with open('/proc/self/mountinfo') as mounts:
                 for line in mounts:
@@ -176,39 +181,68 @@ class WholeFS(object):
                     self._device_info[uuid] = DeviceInfo(label, [dev])
         return self._device_info
 
+    def _ensure_private_mpoint(self, fs):
+        # Create a private mountpoint with:
+        # noatime,noexec,nodev
+        # subvol=/
+        if fs._priv_mpoint is not None:
+            return
+        if not self._unshared:
+            # Make sure we read mountpoints before creating ours,
+            # so that ours won't appear on the list.
+            self.mpoints_by_dev
+            unshare(CLONE_NEWNS)
+            self._unshared = True
+        pm = tempfile.mkdtemp(suffix='.privmnt')
+        subprocess.check_call(
+            'mount -t btrfs -o subvol=/,noatime,noexec,nodev -nU'.split()
+            + [fs.uuid, pm])
+        fs._priv_mpoint = pm
+
+    def clean_up_mpoints(self):
+        if not self._unshared:
+            return
+        for fs, di in self.iter_fs():
+            if fs._priv_mpoint is None:
+                continue
+            for vol in fs.volumes:
+                if getattr(vol, 'fd', None) is not None:
+                    self._close_vol(vol)
+            subprocess.check_call('umount -n -- '.split() + [fs._priv_mpoint])
+            os.rmdir(fs._priv_mpoint)
+            fs._priv_mpoint = None
+
+    def close(self):
+        # For context managers
+        self.clean_up_mpoints()
+
     def load_all_writable_vols(self, tt, size_cutoff):
-        # All visible, non-ro, non-frozen volumes
-        # XXX Same failure mode as load_vols
+        # All non-frozen volumes that are on a
+        # filesystem that has a non-ro mountpoint.
         loaded = []
         for (uuid, di) in self.device_info.iteritems():
             fs = self.get_fs(uuid)
             self._ensure_root_info(fs)
             if not fs.mpoints:
+                # Not mounted
                 continue
-            mpoints = []
-            for minfos in fs.mpoints.itervalues():
-                for mi in minfos:
-                    mpoints.append(mi.mpoint)
-            lo, sta = self._load_visible_vols(fs, mpoints, size_cutoff)
-            frozen_skipped = ro_skipped = 0
+            if all(mi.readonly for mi in chain(*fs.mpoints.itervalues())):
+                # All mountpoints are read-only
+                continue
+            self._ensure_private_mpoint(fs)
+            lo, sta = self._load_visible_vols(
+                fs, [fs._priv_mpoint], size_cutoff)
+            frozen_skipped = 0
             for vol in lo:
-                mi = self._closest_minfo(fs, vol.desc)
                 if vol.root_info.is_frozen:
                     self._close_vol(vol)
                     frozen_skipped += 1
-                elif mi.readonly:
-                    self._close_vol(vol)
-                    ro_skipped += 1
                 else:
                     loaded.append(vol)
             if frozen_skipped:
                 tt.notify(
                     'Skipped %d frozen volumes in filesystem %s %s' % (
                         frozen_skipped, fs.label, fs.uuid))
-            if ro_skipped:
-                tt.notify(
-                    'Skipped %d read-only volumes in filesystem %s %s' % (
-                        ro_skipped, fs.label, fs.uuid))
         return loaded
 
     def load_vols(self, volpaths, tt, size_cutoff, recurse):
