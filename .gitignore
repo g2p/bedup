@@ -4,6 +4,7 @@
 /MANIFEST
 /bedup.egg-info/
 /bedup/platform/__pycache__/
-/bedup/platform/_cffi__*.so
+# These are created under ext_package in develop mode:
+/bedup/_cffi__*.so
 /build/
 /dist/
