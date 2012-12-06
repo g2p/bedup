@@ -56,6 +56,9 @@ MountInfo = namedtuple('MountInfo', 'internal_path mpoint readonly private')
 VolDesc = namedtuple('VolDesc', 'description is_fs_path')
 
 
+FSENC = sys.getfilesystemencoding()
+
+
 class NotMounted(RuntimeError):
     pass
 
@@ -129,7 +132,7 @@ class BtrfsFilesystem2(object):
 
     def best_desc(self, root_id):
         if root_id not in self._best_desc:
-            intpath = self.root_info[root_id].path
+            intpath = self.root_info[root_id].path.decode(FSENC)
             candidate_mis = [
                 mi for mi in self.minfos
                 if not mi.private and path_isprefix(mi.internal_path, intpath)]
@@ -437,6 +440,8 @@ class WholeFS(object):
         ).splitlines():
             dev, label, uuid = BLKID_RE.match(line).groups()
             uuid = UUID(hex=uuid.decode('ascii'))
+            dev = dev.decode('ascii')
+            label = label.decode('ascii')
             if uuid in di:
                 # btrfs raid
                 assert di[uuid].label == label
