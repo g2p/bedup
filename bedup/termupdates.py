@@ -134,7 +134,7 @@ class TermTemplate(object):
                             format_spec = 'time'
 
                     if format_spec == '':
-                        self._stream.write(self._kws.get(field_name, ''))
+                        self._stream.write(str(self._kws.get(field_name, '')))
                     elif format_spec == 'total':
                         if field_name in self._kws_totals:
                             self._stream.write(

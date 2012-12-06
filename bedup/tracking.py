@@ -94,8 +94,8 @@ def track_updated_files(sess, vol, tt):
         'Scanning volume %s generations from %d to %d, with size cutoff %d'
         % (vol, min_generation, top_generation, vol.size_cutoff))
     tt.format(
-        '{elapsed} Updated {desc:counter} items: '
-        '{path:truncate-left} {desc}')
+        '{elapsed} Scanned {scanned} retained {retained:counter}')
+    scanned = 0
 
     args = ffi.new('struct btrfs_ioctl_search_args *')
     args_buffer = ffi.buffer(args)
@@ -162,26 +162,10 @@ def track_updated_files(sess, vol, tt):
                     sess, Inode, vol=vol.impl, ino=ino)
                 inode.size = size
                 inode.has_updates = True
+                tt.update(retained=True)
+        scanned += sk.nr_items
+        tt.update(scanned=scanned)
 
-                try:
-                    path = vol.lookup_one_path(inode)
-                except IOError as e:
-                    tt.notify(
-                        'Error at path lookup of inode %d: %r' % (ino, e))
-                    if inode_created:
-                        sess.expunge(inode)
-                    else:
-                        sess.delete(inode)
-                    continue
-
-                try:
-                    path = path.decode(FS_ENCODING)
-                except ValueError:
-                    continue
-                tt.update(path=path)
-                tt.update(
-                    desc='(ino %d outer gen %d inner gen %d size %d)' % (
-                        ino, sh.transid, inode_gen, size))
         sk.min_objectid = sh.objectid
         sk.min_type = sh.type
         sk.min_offset = sh.offset
@@ -529,7 +513,8 @@ def dedup_tracked1(sess, tt, ofile_reserved, query, fs):
                         continue
                     sfile = fileset[0]
                     sfd = sfile.fileno()
-                    sdesc = fd_inodes[sfd].vol.live.describe_path(fd_names[sfd])
+                    sdesc = fd_inodes[sfd].vol.live.describe_path(
+                        fd_names[sfd])
                     # Commented out, defragmentation can unshare extents.
                     # It can also disable compression as a side-effect.
                     if False:
