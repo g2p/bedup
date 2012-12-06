@@ -61,22 +61,25 @@ If bedup isn't in your path or your sudo path, use ``python -m bedup`` instead.
 
 You'll see a list of supported commands.
 
--  **scan** scans volumes to keep track of potentially duplicated files.
--  **dedup** runs scan, then deduplicates identical files.
--  **show** shows btrfs filesystems and their tracking status.
--  **dedup-files** takes a list of identical files and deduplicates them.
--  **find-new** reimplements the ``btrfs subvolume find-new`` command
+- **scan** scans volumes to keep track of potentially duplicated files.
+- **dedup** runs scan, then deduplicates identical files.
+- **show** shows btrfs filesystems and their tracking status.
+- **dedup-files** takes a list of identical files and deduplicates them.
+- **find-new** reimplements the ``btrfs subvolume find-new`` command
   with a few extra options.
 
-To deduplicate a mounted btrfs volume and its non-frozen subvolumes: ::
-
-    sudo bedup dedup /mnt/btrfs
-
-To deduplicate all writable subvolumes in the system: ::
+To deduplicate all filesystems: ::
 
     sudo bedup dedup
 
-bedup will recurse into subvolumes starting with v0.0.8.
+Unmounted or read-only filesystems are excluded if they aren't listed
+on the command line.
+Filesystems can be referenced by uuid or by a path in /dev: ::
+
+    sudo bedup dedup /dev/disks/by-label/Btrfs
+
+Giving a subvolume path also works, and will include subvolumes by default.
+
 Since cross-subvolume deduplication requires Linux 3.6, users of older
 kernels should use the ``--no-crossvol`` flag.
 
