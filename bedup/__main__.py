@@ -19,7 +19,6 @@
 # along with bedup.  If not, see <http://www.gnu.org/licenses/>.
 
 import argparse
-import collections
 import errno
 import os
 import sqlalchemy
@@ -27,10 +26,12 @@ import sys
 import warnings
 import xdg.BaseDirectory  # pyxdg, apt:python-xdg
 
+from collections import defaultdict, OrderedDict
 from contextlib import closing
 from contextlib2 import ExitStack
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import SingletonThreadPool
+from uuid import UUID
 
 from .platform.btrfs import find_new, get_root_generation
 from .platform.ioprio import set_idle_priority
@@ -107,7 +108,13 @@ def get_session(args):
 
 def vol_cmd(args):
     if args.command == 'dedup-vol':
+        sys.stderr.write(
+            "The dedup-vol command is deprecated, please use dedup.\n")
         args.command = 'dedup'
+    elif args.command == 'reset' and not args.filter:
+        sys.stderr.write("You need to list volumes explicitly.\n")
+        return 1
+
     with ExitStack() as stack:
         tt = stack.enter_context(closing(TermTemplate()))
         # Adds about 1s to cold startup
@@ -115,26 +122,33 @@ def vol_cmd(args):
         whole_fs = WholeFS(sess, size_cutoff=args.size_cutoff)
         stack.enter_context(closing(whole_fs))
 
-        if args.volume:
-            # Include cli args and their non-frozen descendants.
-            # We won't ignore explicitly-given frozen volumes, but until the
-            # kernel grows extra support, deduplication will fail, and the
-            # other commands aren't terribly useful without deduplication.
-            vols = whole_fs.load_vols(
-                args.volume, tt, args.recurse_subvols)
+        if not args.filter:
+            vols = whole_fs.load_all_writable_vols(tt)
         else:
-            if args.recurse_subvols:
-                if args.command == 'reset':
-                    sys.stderr.write("You need to list volumes explicitly.\n")
-                    return 1
-                vols = whole_fs.load_all_writable_vols(tt)
-            else:
-                sys.stderr.write(
-                    "You either need to enable recursion or to "
-                    "pass a list of volumes\n")
-                return 1
+            vols = OrderedDict()
+            for filt in args.filter:
+                if filt.startswith('vol:/'):
+                    volpath = filt[4:]
+                    filt_vols = whole_fs.load_vols(
+                        [volpath], tt, recurse=False)
+                elif filt.startswith('/'):
+                    if os.path.realpath(filt).startswith('/dev/'):
+                        filt_vols = whole_fs.load_vols_for_device(filt, tt)
+                    else:
+                        filt_vols = whole_fs.load_vols(
+                            [filt], tt, recurse=True)
+                else:
+                    try:
+                        uuid = UUID(hex=filt)
+                    except ValueError:
+                        sys.stderr.write(
+                            'Filter format not recognised: %r\n' % filt)
+                        return 1
+                    filt_vols = whole_fs.load_vols_for_fs(whole_fs.get_fs(uuid), tt)
+                for vol in filt_vols:
+                    vols[vol] = True
 
-        vols_by_fs = collections.defaultdict(list)
+        vols_by_fs = defaultdict(list)
 
         if args.command == 'reset':
             for vol in vols:
@@ -156,8 +170,7 @@ def vol_cmd(args):
 
         if args.command == 'dedup':
             for fs, volset in vols_by_fs.iteritems():
-                tt.notify(
-                    'Deduplicating filesystem %s %s' % (fs.label, fs.uuid))
+                tt.notify('Deduplicating filesystem %s' % fs)
                 dedup_tracked(sess, volset, tt)
 
         # For safety only.
@@ -246,7 +259,12 @@ def sql_flags(parser):
 
 
 def vol_flags(parser):
-    parser.add_argument('volume', nargs='*', help='btrfs volumes')
+    parser.add_argument(
+        'filter', nargs='*',
+        help='List filesystem uuids, devices, or volume mountpoints to '
+        'select which volumes are included. '
+        'Prefix a volume mountpoint with vol: if you do not want '
+        'subvolumes to be included.')
     sql_flags(parser)
     parser.add_argument(
         '--size-cutoff', type=int, dest='size_cutoff',

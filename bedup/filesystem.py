@@ -64,6 +64,10 @@ class NotPlugged(RuntimeError):
     pass
 
 
+class BadDevice(RuntimeError):
+    pass
+
+
 def path_isprefix(prefix, path):
     # prefix and path must be absolute and normalised,
     # including symlink resolution.
@@ -461,6 +465,34 @@ class WholeFS(object):
         # For context managers
         self.clean_up_mpoints()
 
+    def load_vols_for_device(self, devpath, tt):
+        for uuid, di in self.device_info.iteritems():
+            if any(os.path.samefile(dp, devpath) for dp in di.devices):
+                fs = self.get_fs(uuid)
+                return self.load_vols_for_fs(fs, tt)
+        raise BadDevice('No Btrfs filesystem detected by blkid', devpath)
+
+    def load_vols_for_fs(self, fs, tt):
+        # Check that the filesystem is plugged
+        fs.device_info
+
+        loaded = []
+        fs.ensure_private_mpoint()
+        lo, sta = fs._load_visible_vols([fs._priv_mpoint], nest_desc=False)
+        assert self._vol_map
+        frozen_skipped = 0
+        for vol in lo:
+            if vol.root_info.is_frozen:
+                vol.close()
+                frozen_skipped += 1
+            else:
+                loaded.append(vol)
+        if frozen_skipped:
+            tt.notify(
+                'Skipped %d frozen volumes in filesystem %s' % (
+                    frozen_skipped, fs))
+        return loaded
+
     def load_all_writable_vols(self, tt):
         # All non-frozen volumes that are on a
         # filesystem that has a non-ro mountpoint.
@@ -470,24 +502,12 @@ class WholeFS(object):
             try:
                 fs.root_info
             except NotMounted:
+                tt.notify('Skipping filesystem %s, not mounted' % fs)
                 continue
             if all(mi.readonly for mi in fs.minfos):
-                # All mountpoints are read-only
+                tt.notify('Skipping filesystem %s, not mounted rw' % fs)
                 continue
-            fs.ensure_private_mpoint()
-            lo, sta = fs._load_visible_vols([fs._priv_mpoint], nest_desc=False)
-            assert self._vol_map
-            frozen_skipped = 0
-            for vol in lo:
-                if vol.root_info.is_frozen:
-                    vol.close()
-                    frozen_skipped += 1
-                else:
-                    loaded.append(vol)
-            if frozen_skipped:
-                tt.notify(
-                    'Skipped %d frozen volumes in filesystem %s %s' % (
-                        frozen_skipped, fs.label, fs.uuid))
+            loaded.extend(self.load_vols_for_fs(fs, tt))
         return loaded
 
     def load_vols(self, volpaths, tt, recurse):
@@ -510,8 +530,8 @@ class WholeFS(object):
                         loaded[vol] = True
                 if skipped:
                     tt.notify(
-                        'Skipped %d frozen volumes in filesystem %s %s' % (
-                            skipped, vol.fs.label, vol.fs.uuid))
+                        'Skipped %d frozen volumes in filesystem %s' % (
+                            skipped, vol.fs))
             else:
                 if vol not in loaded:
                     loaded[vol] = True
