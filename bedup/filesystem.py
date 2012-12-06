@@ -523,6 +523,10 @@ class WholeFS(object):
         for volpath in volpaths:
             vol = self._get_vol_by_path(volpath, desc=VolDesc(volpath, True))
             if recurse:
+                if vol.root_info.path != b'/':
+                    tt.notify(
+                        '%s isn\'t the root volume, '
+                        'use the filesystem uuid for maximum efficiency.' % vol)
                 lo, sta = vol._fs._load_visible_vols([volpath], nest_desc=True)
                 skipped = 0
                 for vol in lo:
