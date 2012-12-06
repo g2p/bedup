@@ -78,7 +78,7 @@ To deduplicate all writable subvolumes in the system: ::
 
 bedup will recurse into subvolumes starting with v0.0.8.
 Since cross-subvolume deduplication requires Linux 3.6, users of older
-kernels should pass a single volume and use the ``--no-subvols`` flag.
+kernels should use the ``--no-crossvol`` flag.
 
 The first run can take some time. Subsequent runs will only scan and
 deduplicate the files that have changed in the interval.

@@ -148,6 +148,8 @@ def vol_cmd(args):
                 for vol in filt_vols:
                     vols[vol] = True
 
+        # XXX should group by mountpoint instead.
+        # Only a problem when called with volume names instead of an fs filter.
         vols_by_fs = defaultdict(list)
 
         if args.command == 'reset':
@@ -169,9 +171,16 @@ def vol_cmd(args):
                 vols_by_fs[vol.fs].append(vol)
 
         if args.command == 'dedup':
-            for fs, volset in vols_by_fs.iteritems():
-                tt.notify('Deduplicating filesystem %s' % fs)
-                dedup_tracked(sess, volset, tt)
+            if args.groupby == 'vol':
+                for vol in vols:
+                    tt.notify('Deduplicating volume %s' % vol)
+                    dedup_tracked(sess, [vol], tt)
+            elif args.groupby == 'mpoint':
+                for fs, volset in vols_by_fs.iteritems():
+                    tt.notify('Deduplicating filesystem %s' % fs)
+                    dedup_tracked(sess, volset, tt)
+            else:
+                assert False, args.groupby
 
         # For safety only.
         # The methods we call from the tracking module are expected to commit.
@@ -272,10 +281,10 @@ def vol_flags(parser):
         'for the listed volumes. '
         'Lowering the cutoff will trigger a partial rescan of older files.')
     parser.add_argument(
-        '--no-subvols', action='store_false', dest='recurse_subvols',
-        help='By default, bedup will add visible non-frozen subvolumes '
-        'to the volumes explicitly listed on the command-line. This '
-        'option disables subvolume recursion.')
+        '--no-crossvol', action='store_const',
+        const='vol', default='mpoint', dest='groupby',
+        help='This option disables cross-volume deduplication. '
+        'This may be useful with pre-3.6 kernels.')
 
 
 def scan_flags(parser):
