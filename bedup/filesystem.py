@@ -25,6 +25,7 @@ import sys
 import tempfile
 
 from collections import namedtuple, defaultdict, OrderedDict, Counter
+from compat import fsdecode
 from uuid import UUID
 
 from sqlalchemy.util import memoized_property
@@ -54,9 +55,6 @@ MountInfo = namedtuple('MountInfo', 'internal_path mpoint readonly private')
 
 # A description, which may or may not be a path in the global filesystem
 VolDesc = namedtuple('VolDesc', 'description is_fs_path')
-
-
-FSENC = sys.getfilesystemencoding()
 
 
 class NotMounted(RuntimeError):
@@ -132,7 +130,7 @@ class BtrfsFilesystem2(object):
 
     def best_desc(self, root_id):
         if root_id not in self._best_desc:
-            intpath = self.root_info[root_id].path.decode(FSENC)
+            intpath = fsdecode(self.root_info[root_id].path)
             candidate_mis = [
                 mi for mi in self.minfos
                 if not mi.private and path_isprefix(mi.internal_path, intpath)]

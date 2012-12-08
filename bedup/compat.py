@@ -21,6 +21,7 @@ import sys
 
 
 PY3 = sys.version_info[0] >= 3
+FSENC = sys.getfilesystemencoding()
 
 
 # CFFI 0.4 reimplements Python 2 buffers on Python 3
@@ -30,6 +31,14 @@ if PY3 and False:
 else:
     def buffer_to_bytes(buf):
         return buf[:]
+
+
+if PY3:
+    from os import fsdecode
+else:
+    def fsdecode(filename):
+        assert isinstance(filename, str)
+        return filename.decode(FSENC, 'surrogateescape')
 
 
 if not hasattr(subprocess, 'check_output'):

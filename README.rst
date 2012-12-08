@@ -83,9 +83,6 @@ Giving a subvolume path also works, and will include subvolumes by default.
 Since cross-subvolume deduplication requires Linux 3.6, users of older
 kernels should use the ``--no-crossvol`` flag.
 
-The first run can take some time. Subsequent runs will only scan and
-deduplicate the files that have changed in the interval.
-
 Hacking
 =======
 

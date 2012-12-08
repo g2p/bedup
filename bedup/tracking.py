@@ -28,6 +28,7 @@ import sys
 import threading
 
 from collections import defaultdict, namedtuple
+from compat import fsdecode
 from contextlib import closing
 from contextlib2 import ExitStack
 from itertools import groupby
@@ -47,8 +48,6 @@ from .model import (
 BUFSIZE = 8192
 
 WINDOW_SIZE = 200
-
-FS_ENCODING = sys.getfilesystemencoding()
 
 
 def reset_vol(sess, vol):
@@ -368,7 +367,7 @@ def dedup_tracked1(sess, tt, ofile_reserved, query, fs):
             # updated (as opposed to extent updates) to be able to actually
             # cache the result
             try:
-                path = inode.vol.live.lookup_one_path(inode)
+                pathb = inode.vol.live.lookup_one_path(inode)
             except IOError as e:
                 if e.errno != errno.ENOENT:
                     raise
@@ -383,7 +382,7 @@ def dedup_tracked1(sess, tt, ofile_reserved, query, fs):
                 # inode.
                 sess.delete(inode)
                 continue
-            with closing(fopenat(inode.vol.live.fd, path)) as rfile:
+            with closing(fopenat(inode.vol.live.fd, pathb)) as rfile:
                 by_mh[mini_hash_from_file(inode, rfile)].append(inode)
                 tt.update(mhash=None)
 
@@ -394,13 +393,13 @@ def dedup_tracked1(sess, tt, ofile_reserved, query, fs):
             fies = set()
             for inode in inodes:
                 try:
-                    path = inode.vol.live.lookup_one_path(inode)
+                    pathb = inode.vol.live.lookup_one_path(inode)
                 except IOError as e:
                     if e.errno != errno.ENOENT:
                         raise
                     sess.delete(inode)
                     continue
-                with closing(fopenat(inode.vol.live.fd, path)) as rfile:
+                with closing(fopenat(inode.vol.live.fd, pathb)) as rfile:
                     fies.add(fiemap_hash_from_file(rfile))
 
             if len(fies) < 2:
@@ -408,6 +407,7 @@ def dedup_tracked1(sess, tt, ofile_reserved, query, fs):
 
             files = []
             fds = []
+            # For description only
             fd_names = {}
             fd_inodes = {}
             by_hash = defaultdict(list)
@@ -434,14 +434,15 @@ def dedup_tracked1(sess, tt, ofile_reserved, query, fs):
                 # yet because the crypto hash might eliminate it.
                 # We may also want to defragment the source.
                 try:
-                    path = inode.vol.live.lookup_one_path(inode)
+                    pathb = inode.vol.live.lookup_one_path(inode)
+                    path = fsdecode(pathb)
                 except IOError as e:
                     if e.errno == errno.ENOENT:
                         sess.delete(inode)
                         continue
                     raise
                 try:
-                    afile = fopenat_rw(inode.vol.live.fd, path)
+                    afile = fopenat_rw(inode.vol.live.fd, pathb)
                 except IOError as e:
                     if e.errno == errno.ETXTBSY:
                         # The file contains the image of a running process,
