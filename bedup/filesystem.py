@@ -438,8 +438,13 @@ class WholeFS(object):
         ).splitlines():
             dev, label, uuid = BLKID_RE.match(line).groups()
             uuid = UUID(hex=uuid.decode('ascii'))
-            dev = dev.decode('ascii')
-            label = label.decode('ascii')
+            dev = fsdecode(dev)
+            if label is not None:
+                try:
+                    label = label.decode('ascii')
+                except UnicodeDecodeError:
+                    # Don't try to guess.
+                    pass
             if uuid in di:
                 # btrfs raid
                 assert di[uuid].label == label
