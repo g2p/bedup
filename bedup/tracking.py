@@ -301,10 +301,12 @@ class WindowedQuery(object):
 
     def clear_updates(self, window_start, window_end):
         # Can't call update directly on FilteredInode because it is aliased.
+        # Can't use a <= b <= c in one term with SQLa.
         self.sess.execute(
             self.unfiltered.update().where(and_(
                 self.filt_crit,
-                window_start >= self.unfiltered.c.size >= window_end
+                window_start >= self.unfiltered.c.size,
+                self.unfiltered.c.size >= window_end,
             )).values(
                 has_updates=False))
 
