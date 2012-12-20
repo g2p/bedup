@@ -28,12 +28,12 @@ import sys
 import threading
 
 from collections import defaultdict, namedtuple
-from compat import fsdecode
 from contextlib import closing
 from contextlib2 import ExitStack
 from itertools import groupby
 from sqlalchemy.sql import and_, select, func, literal_column
 
+from .compat import fsdecode
 from .platform.btrfs import (
     get_root_generation, clone_data, defragment)
 from .platform.openat import fopenat, fopenat_rw

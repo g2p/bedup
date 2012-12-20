@@ -25,11 +25,11 @@ import sys
 import tempfile
 
 from collections import namedtuple, defaultdict, OrderedDict, Counter
-from compat import fsdecode
 from uuid import UUID
 
 from sqlalchemy.util import memoized_property
 
+from .compat import fsdecode
 from .platform.btrfs import (
     get_fsid, get_root_id, lookup_ino_path_one,
     read_root_tree, BTRFS_FIRST_FREE_OBJECTID)
