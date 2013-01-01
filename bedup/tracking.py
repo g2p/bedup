@@ -52,7 +52,7 @@ WINDOW_SIZE = 200
 
 def reset_vol(sess, vol):
     # Forgets Inodes, not logging. Make that configurable?
-    sess.query(Inode).filter_by(vol=vol).delete()
+    sess.query(Inode).filter_by(vol=vol.impl).delete()
     vol.last_tracked_generation = 0
     sess.commit()
 
