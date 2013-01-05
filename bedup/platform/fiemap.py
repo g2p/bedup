@@ -71,6 +71,7 @@ struct fiemap {
 #define FIEMAP_EXTENT_MERGED            ... /* File does not natively
                                              * support extents. Result
                                              * merged for efficiency. */
+// Linux 2.6.33
 #define FIEMAP_EXTENT_SHARED            ... /* Space shared with other
                                              * files. */
 
