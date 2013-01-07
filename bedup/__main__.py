@@ -84,6 +84,7 @@ def sql_setup(dbapi_con, con_record):
     cur.execute('PRAGMA journal_mode = WAL')
     cur.execute('PRAGMA journal_mode')
     val = cur.fetchone()
+    # SQLite 3.7 is required
     assert val == ('wal',), val
 
 
