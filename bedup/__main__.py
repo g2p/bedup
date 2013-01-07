@@ -42,7 +42,8 @@ from .filesystem import show_vols, WholeFS
 from .migrations import upgrade_schema
 from .termupdates import TermTemplate
 from .tracking import (
-    track_updated_files, dedup_tracked, reset_vol, fake_updates)
+    track_updated_files, dedup_tracked, reset_vol, fake_updates,
+    annotated_inodes_by_size)
 
 
 APP_NAME = 'bedup'
@@ -237,6 +238,16 @@ def cmd_forget_fs(args):
         print('Wiped all data about %s' % fs)
 
 
+def cmd_size_lookup(args):
+    sess = get_session(args)
+    whole_fs = WholeFS(sess)
+    for vol, rp, inode in annotated_inodes_by_size(whole_fs, args.size):
+        print(vol.describe_path(rp))
+
+    # We've deleted some stale inodes
+    sess.commit()
+
+
 def cmd_shell(args):
     sess = get_session(args)
     whole_fs = WholeFS(sess)
@@ -393,6 +404,13 @@ Display the btrfs generation of VOLUME.""")
     sp_generation.add_argument(
         '--flush', action='store_true', dest='flush',
         help='Flush outstanding data using syncfs before lookup')
+
+    sp_size_lookup = commands.add_parser(
+        'size-lookup', help='Look up inodes by size', description="""
+List tracked inodes with a given size.""")
+    sp_size_lookup.set_defaults(action=cmd_size_lookup)
+    sp_size_lookup.add_argument('size', type=int)
+    sql_flags(sp_size_lookup)
 
     sp_shell = commands.add_parser(
         'shell', description="""

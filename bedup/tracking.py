@@ -74,6 +74,39 @@ def fake_updates(sess, max_events):
     return faked
 
 
+def inodes_by_size(sess, size):
+    # orm grouping is too complicated, just sort
+    return sess.query(Inode).filter_by(size=size).order_by(
+        Inode.fs_id, Inode.vol_id)
+
+
+def annotated_inodes_by_size(whole_fs, size):
+    sess = whole_fs.sess
+    fs_uuid = None
+    vol_id = None
+
+    for inode in inodes_by_size(sess, size):
+        if inode.vol_id != vol_id:
+            if vol_id is not None:
+                vol.close()
+            if inode.vol.fs.uuid != fs_uuid:
+                if fs_uuid is not None:
+                    #fs.close()  # XXX implement
+                    fs.clean_up_mpoints()
+                fs_uuid = inode.vol.fs.uuid
+                fs = whole_fs.get_fs(fs_uuid)
+            vol_id = inode.vol_id
+            vol = fs.load_vol_by_root_id(inode.vol.root_id)
+        try:
+            rp = vol.lookup_one_path(inode)
+        except IOError as err:
+            if err.errno != errno.ENOENT:
+                raise
+            sess.delete(inode)
+            continue
+        yield vol, rp, inode
+
+
 def track_updated_files(sess, vol, tt):
     from .platform.btrfs import ffi, u64_max
 

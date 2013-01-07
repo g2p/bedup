@@ -165,6 +165,12 @@ class BtrfsFilesystem2(object):
         self.add_minfo(MountInfo(
             internal_path='/', mpoint=pm, readonly=False, private=True))
 
+    def load_vol_by_root_id(self, root_id):
+        self.ensure_private_mpoint()
+        ri = self.root_info[root_id]
+        return self._whole_fs._get_vol_by_path(
+            self._priv_mpoint + ri.path, desc=None)
+
     @memoized_property
     def root_info(self):
         if not self.minfos:
