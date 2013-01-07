@@ -144,7 +144,8 @@ def vol_cmd(args):
                         sys.stderr.write(
                             'Filter format not recognised: %r\n' % filt)
                         return 1
-                    filt_vols = whole_fs.load_vols_for_fs(whole_fs.get_fs(uuid), tt)
+                    filt_vols = whole_fs.load_vols_for_fs(
+                        whole_fs.get_fs(uuid), tt)
                 for vol in filt_vols:
                     vols[vol] = True
 
@@ -385,7 +386,7 @@ which displays the extent map of files.
 
     sp_generation = commands.add_parser(
         'generation', help='Display volume generation', description="""
-Display the btrfs generation of VOLUME""")
+Display the btrfs generation of VOLUME.""")
     sp_generation.set_defaults(action=cmd_generation)
     sp_generation.add_argument('volume', help='btrfs volume')
     sp_generation.add_argument(
