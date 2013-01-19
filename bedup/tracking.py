@@ -243,6 +243,8 @@ class WindowedQuery(object):
         self.upper_bound = self.sess.query(
             self.unfiltered.c.size).order_by(
                 -self.unfiltered.c.size).limit(1).scalar()
+        if self.upper_bound is None:
+            self.upper_bound = -1
 
     def __len__(self):
         return self.sess.execute(self.selectable.count()).scalar()
