@@ -1,5 +1,6 @@
 # bedup - Btrfs deduplication
 # Copyright (C) 2012 Gabriel de Perthuis <g2p.code+bedup@gmail.com>
+# Copyright (C) 2011 Victor Stinner
 #
 # This file is part of bedup.
 #
@@ -16,6 +17,7 @@
 # You should have received a copy of the GNU General Public License
 # along with bedup.  If not, see <http://www.gnu.org/licenses/>.
 
+import codecs
 import subprocess
 import sys
 
@@ -31,6 +33,53 @@ if PY3 and False:
 else:
     def buffer_to_bytes(buf):
         return buf[:]
+
+
+if PY3:
+    _unichr = chr
+else:
+    _unichr = unichr
+
+
+try:
+    codecs.lookup_error('surrogateescape')
+except LookupError:
+    def my_se(exc):
+        """
+        Pure Python implementation of PEP 383: the "surrogateescape" error
+        handler of Python 3.1.
+
+        https://bitbucket.org/haypo/misc/src/tip/python/surrogateescape.py
+        """
+        if isinstance(exc, UnicodeDecodeError):
+            decoded = []
+            for ch in exc.object[exc.start:exc.end]:
+                if PY3:
+                    code = ch
+                else:
+                    code = ord(ch)
+                if 0x80 <= code <= 0xFF:
+                    decoded.append(_unichr(0xDC00 + code))
+                elif code <= 0x7F:
+                    decoded.append(_unichr(code))
+                else:
+                    print("RAISE!")
+                    raise exc
+            decoded = str().join(decoded)
+            return (decoded, exc.end)
+        else:
+            print(exc.args)
+            ch = exc.object[exc.start:exc.end]
+            code = ord(ch)
+            if not 0xDC80 <= code <= 0xDCFF:
+                print("RAISE!")
+                raise exc
+            print(exc.start)
+            byte = _unichr(code - 0xDC00)
+            print(repr(byte))
+            return (byte, exc.end)
+
+    codecs.register_error('surrogateescape', my_se)
 
 
 if PY3:
