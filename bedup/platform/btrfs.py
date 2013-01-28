@@ -482,6 +482,7 @@ def read_root_tree(volume_fd):
     sk.max_transid = u64_max
 
     root_info = {}
+    ri_rel = {}
 
     while True:
         sk.nr_items = 4096
@@ -512,14 +513,21 @@ def read_root_tree(volume_fd):
                 # from the previous loop iteration
                 assert root_id == item_root_id
                 parent_root_id = sh.offset  # completely obvious, no?
-                parent_path = lookup_ino_path_one(
+                # The path from the parent root to the parent directory
+                reldirpath = lookup_ino_path_one(
                     volume_fd, dir_id, tree_id=parent_root_id)
                 assert parent_root_id
-                root_info[root_id] = RootInfo(
-                    posixpath.join(
-                        root_info[parent_root_id].path, parent_path, name),
+                if parent_root_id in root_info:
+                    root_info[root_id] = RootInfo(
+                        posixpath.join(
+                            root_info[parent_root_id].path, reldirpath, name),
                     parent_root_id,
                     is_frozen)
+                else:
+                    ri_rel[root_id] = RootInfo(
+                        posixpath.join(reldirpath, name),
+                        parent_root_id,
+                        is_frozen)
             # There's also a uuid we could catch on a sufficiently recent
             # BTRFS_ROOT_ITEM_KEY (v3.6). Since the fs is live careful
             # invalidation (in case it was mounted by an older kernel)
@@ -527,6 +535,17 @@ def read_root_tree(volume_fd):
 
         sk.min_objectid = sh.objectid
         sk.min_offset = sh.offset + 1
+
+    # Deal with parent_root_id > root_id,
+    # happens after moving subvolumes.
+    while ri_rel:
+        for (root_id, ri) in ri_rel.items():
+            if ri.parent_root_id not in root_info:
+                continue
+            parent_path = root_info[ri.parent_root_id].path
+            root_info[root_id] = ri._replace(
+                path=posixpath.join(parent_path, ri.path))
+            del ri_rel[root_id]
     return root_info
 
 
