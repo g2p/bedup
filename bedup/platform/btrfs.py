@@ -534,6 +534,7 @@ def read_root_tree(volume_fd):
             # shouldn't be necessary.
 
         sk.min_objectid = sh.objectid
+        sk.min_type = max(lib.BTRFS_ROOT_ITEM_KEY, sh.type)
         sk.min_offset = sh.offset + 1
 
     # Deal with parent_root_id > root_id,
