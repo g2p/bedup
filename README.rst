@@ -55,7 +55,8 @@ Running
 
 ::
 
-    bedup -h
+    bedup --help
+    bedup <command> --help
 
 If bedup isn't in your path or your sudo path, use ``python -m bedup`` instead.
 
