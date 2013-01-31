@@ -16,4 +16,5 @@ include tox.ini
 
 # contains cffi-generated C files
 prune bedup/__pycache__
+prune bedup/platform/__pycache__
 
