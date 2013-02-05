@@ -26,6 +26,12 @@ ffi.cdef('''
     ''')
 lib = ffi.verify('''
     #include <unistd.h>
+    #include <sys/syscall.h>
+
+    // (re)define for compatibility with glibc < 2.14
+    int syncfs(int fd) {
+        return syscall(__NR_syncfs, fd);
+    }
     ''',
     extra_compile_args=['-D_GNU_SOURCE'],
     ext_package='bedup')
