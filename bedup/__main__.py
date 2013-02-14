@@ -407,7 +407,13 @@ Fake inode updates from the latest dedup events (useful for benchmarking).""")
     sp_fake_updates.add_argument('max_events', type=int)
     sql_flags(sp_fake_updates)
 
+    # Give help when no subcommand is given
+    if not argv[1:]:
+        parser.print_help()
+        return
+
     args = parser.parse_args(argv[1:])
+
     if args.debug:
         try:
             from ipdb import launch_ipdb_on_exception
