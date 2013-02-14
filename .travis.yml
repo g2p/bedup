@@ -5,9 +5,7 @@ install:
 - lsb_release -a
 - pypy --version
 - sudo touch /etc/suid-debug
-# Travis doesn't install py33 (promised Real Soon Now(tm), see
-# travis-ci/travis-cookbooks#89).
-- sudo apt-get -y install libffi-dev btrfs-tools python3.3-dev
+- sudo apt-get -y install libffi-dev btrfs-tools
 - pip install --use-mirrors tox cffi
 
 # tox has some advantages over travis runners:
