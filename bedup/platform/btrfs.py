@@ -18,9 +18,12 @@
 # You should have received a copy of the GNU General Public License
 # along with bedup.  If not, see <http://www.gnu.org/licenses/>.
 
+from __future__ import print_function
+
 import cffi
 import posixpath
 import uuid
+import sys
 
 from ..compat import buffer_to_bytes
 
@@ -391,10 +394,10 @@ def lookup_ino_paths(volume_fd, ino, alloc_extra=0):  # pragma: no cover
     ioctl_pybug(volume_fd, lib.BTRFS_IOC_INO_PATHS, ffi.buffer(args))
     data_container = ffi.cast('struct btrfs_data_container *', fspath)
     if not (data_container.bytes_missing == data_container.elem_missed == 0):
-        import sys
-        sys.stderr.write(
-            'Problem inode %d %d %d\n' % (
-                ino, data_container.bytes_missing, data_container.elem_missed))
+        print(
+            'Problem inode %d %d %d' % (
+                ino, data_container.bytes_missing, data_container.elem_missed),
+            file=sys.stderr)
         # just say no
         raise IOError('Problem on inode %d' % ino)
 
