@@ -5,11 +5,6 @@ install:
 - lsb_release -a
 - pypy --version
 - sudo touch /etc/suid-debug
-- ls -Al /dev/loop* ||true
-# https://www.kernel.org/pub/linux/utils/util-linux/v2.21/v2.21-ReleaseNotes
-# Ubuntu doesn't ship util-linux 2.21 as of 2013-02 (nor does Debian)
-- bash -c 'cd /dev; sudo MAKEDEV loop'
-- ls -Al /dev/loop* ||true
 - sudo apt-get -y install libffi-dev btrfs-tools
 - pip install --use-mirrors tox cffi
 
