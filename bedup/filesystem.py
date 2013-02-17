@@ -433,9 +433,9 @@ class WholeFS(object):
     def device_info(self):
         di = {}
         lbls = Counter()
-        for line in subprocess.check_output(
-            'blkid -s LABEL -s UUID -t TYPE=btrfs'.split()
-        ).splitlines():
+        cmd = 'blkid -s LABEL -s UUID -t TYPE=btrfs'.split()
+        subp = subprocess.Popen(cmd, stdout=subprocess.PIPE)
+        for line in subp.stdout:
             dev, label, uuid = BLKID_RE.match(line).groups()
             uuid = UUID(hex=uuid.decode('ascii'))
             dev = fsdecode(dev)
@@ -452,6 +452,10 @@ class WholeFS(object):
             else:
                 lbls[label] += 1
                 di[uuid] = DeviceInfo(label, [dev])
+        rc = subp.wait()
+        # 2 means there is no btrfs filesystem
+        if rc not in (0, 2):
+            raise subprocess.CalledProcessError(rc, cmd)
         self._label_occurs = dict(lbls)
         return di
 
