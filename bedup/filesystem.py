@@ -357,11 +357,12 @@ class WholeFS(object):
             seen_fs_ids.append(fs._impl.id)
             yield fs, di
 
-        for uuid, in self.sess.query(
-            BtrfsFilesystem.uuid
-        ).filter(
-            ~ BtrfsFilesystem.id.in_(seen_fs_ids)
-        ):
+        extra_fs_query = self.sess.query(BtrfsFilesystem.uuid)
+        if seen_fs_ids:
+            # Conditional because we get a performance SAWarning otherwise
+            extra_fs_query = extra_fs_query.filter(
+                ~ BtrfsFilesystem.id.in_(seen_fs_ids))
+        for uuid, in extra_fs_query:
             yield self.get_fs(UUID(hex=uuid)), None
 
     def iter_open_vols(self):
