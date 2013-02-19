@@ -96,6 +96,8 @@ def annotated_inodes_by_size(whole_fs, size):
                 fs_uuid = inode.vol.fs.uuid
                 fs = whole_fs.get_fs(fs_uuid)
             vol_id = inode.vol_id
+            # XXX Handle unavailable filesystems
+            # XXX Make the mountpoint read-only
             vol = fs.load_vol_by_root_id(inode.vol.root_id)
         try:
             rp = vol.lookup_one_path(inode)
