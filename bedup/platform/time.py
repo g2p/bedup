@@ -20,6 +20,9 @@ __all__ = ('monotonic_time', )
 
 from cffi import FFI
 
+from . import cffi_support
+
+
 ffi = FFI()
 ffi.cdef('''
 #define CLOCK_MONOTONIC ...
@@ -35,10 +38,9 @@ struct timespec {
 int clock_gettime(int clk_id, struct timespec *tp);
 ''')
 
-lib = ffi.verify(
-    '''#include <time.h>''',
-    libraries=['rt'],
-    ext_package='bedup')
+lib = cffi_support.verify(ffi, '''
+#include <time.h>''',
+    libraries=['rt'])
 
 
 def monotonic_time():

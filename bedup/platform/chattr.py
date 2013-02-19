@@ -19,6 +19,9 @@
 from cffi import FFI
 import fcntl
 
+from . import cffi_support
+
+
 __all__ = (
     'getflags',
     'editflags',
@@ -61,9 +64,9 @@ ffi.cdef('''
 ''')
 
 # apt:linux-libc-dev
-lib = ffi.verify('''
+lib = cffi_support.verify(ffi, '''
     #include <linux/fs.h>
-    ''', ext_package='bedup')
+    ''')
 
 FS_IMMUTABLE_FL = lib.FS_IMMUTABLE_FL
 

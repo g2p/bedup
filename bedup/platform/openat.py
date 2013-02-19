@@ -19,14 +19,16 @@
 from cffi import FFI
 import os
 
+from . import cffi_support
+
 
 ffi = FFI()
 ffi.cdef('''
     int openat(int dirfd, const char *pathname, int flags);
 ''')
-lib = ffi.verify('''
-    #include <fcntl.h>
-    ''', ext_package='bedup')
+lib = cffi_support.verify(ffi, '''
+#include <fcntl.h>
+''')
 
 
 def openat(base_fd, path, flags):

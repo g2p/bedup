@@ -20,18 +20,20 @@ from cffi import FFI
 import os
 
 
+from . import cffi_support
+
+
 ffi = FFI()
 ffi.cdef('''
-    // New mount namespace
-    #define CLONE_NEWNS ...
+// New mount namespace
+#define CLONE_NEWNS ...
 
-    int unshare(int flags);
-    ''')
-lib = ffi.verify('''
-    #include <sched.h>
-    ''',
-    extra_compile_args=['-D_GNU_SOURCE'],
-    ext_package='bedup')
+int unshare(int flags);
+''')
+lib = cffi_support.verify(ffi, '''
+#include <sched.h>
+''',
+    extra_compile_args=['-D_GNU_SOURCE'])
 
 CLONE_NEWNS = lib.CLONE_NEWNS
 

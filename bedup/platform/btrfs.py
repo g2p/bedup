@@ -26,10 +26,9 @@ import uuid
 import sys
 
 from ..compat import buffer_to_bytes
-
 from .fiemap import same_extents
+from . import cffi_support
 
-from os import getcwd  # XXX
 from collections import namedtuple
 
 
@@ -324,12 +323,11 @@ uint64_t btrfs_root_generation(struct btrfs_root_item *s);
 
 
 # Also accessible as ffi.verifier.load_library()
-lib = ffi.verify('''
+lib = cffi_support.verify(ffi, '''
     #include <btrfs-progs/ioctl.h>
     #include <btrfs-progs/ctree.h>
     ''',
-    ext_package='bedup',
-    include_dirs=[getcwd()])
+    include_dirs=[cffi_support.BTRFS_INCLUDE_DIR])
 
 
 BTRFS_FIRST_FREE_OBJECTID = lib.BTRFS_FIRST_FREE_OBJECTID

@@ -19,22 +19,23 @@
 from cffi import FFI
 import os
 
+from . import cffi_support
+
 
 ffi = FFI()
 ffi.cdef('''
-    int syncfs(int fd);
-    ''')
-lib = ffi.verify('''
-    #include <unistd.h>
-    #include <sys/syscall.h>
+int syncfs(int fd);
+''')
+lib = cffi_support.verify(ffi, '''
+#include <unistd.h>
+#include <sys/syscall.h>
 
-    // (re)define for compatibility with glibc < 2.14
-    int syncfs(int fd) {
-        return syscall(__NR_syncfs, fd);
-    }
-    ''',
-    extra_compile_args=['-D_GNU_SOURCE'],
-    ext_package='bedup')
+// (re)define for compatibility with glibc < 2.14
+int syncfs(int fd) {
+    return syscall(__NR_syncfs, fd);
+}
+''',
+    extra_compile_args=['-D_GNU_SOURCE'])
 
 
 def syncfs(fd):

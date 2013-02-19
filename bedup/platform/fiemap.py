@@ -20,6 +20,9 @@ from cffi import FFI
 from collections import namedtuple
 import fcntl
 
+from . import cffi_support
+
+
 ffi = FFI()
 ffi.cdef('''
 #define FS_IOC_FIEMAP ...
@@ -77,11 +80,11 @@ struct fiemap {
 
 ''')
 
-lib = ffi.verify('''
+lib = cffi_support.verify(ffi, '''
 #include <inttypes.h>
 #include <linux/fs.h>
 #include <linux/fiemap.h>
-''', ext_package='bedup')
+''')
 
 
 FiemapExtent = namedtuple('FiemapExtent', 'logical physical length flags')

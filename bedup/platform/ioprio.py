@@ -19,6 +19,9 @@
 from cffi import FFI
 import os
 
+from . import cffi_support
+
+
 # Or we could just use psutil (though it's not PyPy compatible)
 
 
@@ -42,7 +45,7 @@ int IOPRIO_PRIO_DATA(int mask);
 
 # Parts nabbed from schedutils/ionice.c
 # include/linux/ioprio.h has the macro half
-lib = ffi.verify('''
+lib = cffi_support.verify(ffi, '''
 #include <unistd.h>
 #include <sys/syscall.h>
 
@@ -73,7 +76,7 @@ static inline int ioprio_set(int which, int who, int ioprio) {
 static inline int ioprio_get(int which, int who) {
     return syscall(SYS_ioprio_get, which, who);
 }
-''', ext_package='bedup')
+''')
 
 
 def set_idle_priority(pid=None):

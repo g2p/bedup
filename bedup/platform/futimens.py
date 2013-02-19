@@ -20,6 +20,9 @@ from cffi import FFI
 import os
 import weakref
 
+from . import cffi_support
+
+
 # XXX All this would work effortlessly in Python 3.3:
 # st_atime_ns, and os.utime(ns=())
 
@@ -42,11 +45,11 @@ int fstat(int fd, struct stat *buf);
 
 int futimens(int fd, const struct timespec times[2]);
 ''')
-lib = ffi.verify('''
-    #include <sys/types.h>
-    #include <sys/stat.h>
-    #include <unistd.h>
-    ''', ext_package='bedup')
+lib = cffi_support.verify(ffi, '''
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <unistd.h>
+''')
 
 
 _stat_ownership = weakref.WeakKeyDictionary()
