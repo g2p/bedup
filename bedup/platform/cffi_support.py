@@ -33,7 +33,7 @@ BTRFS_INCLUDE_DIR = getcwd()
 def verify(ffi, source, **kwargs):
     assert 'ext_package' not in kwargs
     assert 'modulename' not in kwargs
-    kwargs['ext_package'] = 'bedup'
+    kwargs['ext_package'] = 'bedup.platform'
 
     # modulename can't prevent a rebuild atm,
     # and is also hard to make work with build_ext (build_ext looks
