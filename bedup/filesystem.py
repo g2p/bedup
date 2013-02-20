@@ -572,7 +572,7 @@ def is_subvolume(btrfs_mountpoint_fd):
     return st.st_ino == BTRFS_FIRST_FREE_OBJECTID
 
 
-def show_fs(fs, print_indented):
+def show_fs(fs, print_indented, show_deleted):
     vols_by_id = dict((db_vol.root_id, db_vol) for db_vol in fs._impl.volumes)
     root_ids = set(vols_by_id.keys())
     has_ri = False
@@ -591,6 +591,8 @@ def show_fs(fs, print_indented):
         flags = ''
         if has_ri:
             if root_id not in fs.root_info:
+                if not show_deleted:
+                    continue
                 # The filesystem is available (we could scan the root tree),
                 # so the volume must have been destroyed.
                 flags = ' (deleted)'
@@ -601,6 +603,7 @@ def show_fs(fs, print_indented):
         try:
             vol = vols_by_id[root_id]
         except KeyError:
+            # We'll only use vol in the 'else' no-exception branch
             pass
         else:
             if vol.inode_count:
@@ -623,7 +626,7 @@ def show_fs(fs, print_indented):
                 'Last seen at %s' % vol.last_known_mountpoint, 1)
 
 
-def show_vols(whole_fs, fsuuid_or_device):
+def show_vols(whole_fs, fsuuid_or_device, show_deleted):
     initial_indent = indent = '  '
     uuid_filter = device_filter = None
     found = True
@@ -659,11 +662,11 @@ def show_vols(whole_fs, fsuuid_or_device):
             sys.stdout.write('Label: %s UUID: %s\n' % (di.label, fs.uuid))
             for dev in di.devices:
                 print_indented('Device: %s' % (dev, ), 0)
-            show_fs(fs, print_indented)
+            show_fs(fs, print_indented, show_deleted)
         elif device_filter is None:
             sys.stdout.write(
                 'UUID: %s\n  <no device available>\n' % (fs.uuid,))
-            show_fs(fs, print_indented)
+            show_fs(fs, print_indented, show_deleted)
 
     if not found:
         sys.stderr.write(
