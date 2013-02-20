@@ -28,6 +28,7 @@ from collections import namedtuple, defaultdict, OrderedDict, Counter
 from uuid import UUID
 
 from sqlalchemy.util import memoized_property
+from sqlalchemy.orm.exc import NoResultFound
 
 from .compat import fsdecode
 from .platform.btrfs import (
@@ -356,8 +357,16 @@ class WholeFS(object):
     def get_fs(self, uuid):
         assert isinstance(uuid, UUID)
         if uuid not in self._fs_map:
-            db_fs, fs_created = get_or_create(
-                self.sess, BtrfsFilesystem, uuid=str(uuid))
+            if uuid in self.device_info:
+                db_fs, fs_created = get_or_create(
+                    self.sess, BtrfsFilesystem, uuid=str(uuid))
+            else:
+                # Don't create a db object without a live fs backing it
+                try:
+                    db_fs = self.sess.query(
+                        BtrfsFilesystem).filter_by(uuid=str(uuid)).one()
+                except NoResultFound:
+                    raise NotPlugged(uuid)
             fs = BtrfsFilesystem2(self, db_fs, uuid)
             self._fs_map[uuid] = fs
         return self._fs_map[uuid]
