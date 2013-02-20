@@ -602,6 +602,7 @@ def show_fs(fs, print_indented, show_deleted):
     vols_by_id = dict((db_vol.root_id, db_vol) for db_vol in fs._impl.volumes)
     root_ids = set(vols_by_id.keys())
     has_ri = False
+    deleted_skipped = 0
 
     try:
         root_ids.update(fs.root_info.keys())
@@ -618,6 +619,7 @@ def show_fs(fs, print_indented, show_deleted):
         if has_ri:
             if root_id not in fs.root_info:
                 if not show_deleted:
+                    deleted_skipped += 1
                     continue
                 # The filesystem is available (we could scan the root tree),
                 # so the volume must have been destroyed.
@@ -650,6 +652,9 @@ def show_fs(fs, print_indented, show_deleted):
             # We can use vol, since keys come from one or the other
             print_indented(
                 'Last seen at %s' % vol.last_known_mountpoint, 1)
+
+    if deleted_skipped:
+        print_indented('Skipped %d deleted volumes' % deleted_skipped, 0)
 
 
 def show_vols(whole_fs, fsuuid_or_device, show_deleted):
