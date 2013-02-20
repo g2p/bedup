@@ -349,6 +349,7 @@ class WholeFS(object):
         self._label_occurs = None
 
     def get_fs(self, uuid):
+        assert isinstance(uuid, UUID)
         if uuid not in self._fs_map:
             db_fs, fs_created = get_or_create(
                 self.sess, BtrfsFilesystem, uuid=str(uuid))

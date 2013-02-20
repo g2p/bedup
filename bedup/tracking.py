@@ -32,6 +32,7 @@ from contextlib import closing
 from contextlib2 import ExitStack
 from itertools import groupby
 from sqlalchemy.sql import and_, select, func, literal_column
+from uuid import UUID
 
 from .compat import fsdecode
 from .platform.btrfs import (
@@ -94,7 +95,7 @@ def annotated_inodes_by_size(whole_fs, size):
                     #fs.close()  # XXX implement
                     fs.clean_up_mpoints()
                 fs_uuid = inode.vol.fs.uuid
-                fs = whole_fs.get_fs(fs_uuid)
+                fs = whole_fs.get_fs(UUID(hex=fs_uuid))
             vol_id = inode.vol_id
             # XXX Handle unavailable filesystems
             # XXX Make the mountpoint read-only
