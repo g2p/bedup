@@ -277,7 +277,7 @@ def sql_flags(parser):
         help='Override the location of the sqlite database')
     parser.add_argument(
         '--verbose-sql', action='store_true', dest='verbose_sql',
-        help='print SQL statements being executed')
+        help='Print SQL statements being executed')
 
 
 def vol_flags(parser):
@@ -367,20 +367,20 @@ modified to include directories as well.""")
     sp_find_new.set_defaults(action=cmd_find_new)
     sp_find_new.add_argument(
         '-0|--zero-terminated', dest='zero_terminated', action='store_true',
-        help='use a NUL character as the line separator')
+        help='Use a NUL character as the line separator')
     sp_find_new.add_argument(
-        '--terse', dest='terse', action='store_true', help='print names only')
-    sp_find_new.add_argument('volume', help='volume to search')
+        '--terse', dest='terse', action='store_true', help='Print names only')
+    sp_find_new.add_argument('volume', help='Volume to search')
     sp_find_new.add_argument(
         'generation', type=int, nargs='?', default=0,
-        help='only show items modified at generation or a newer transaction')
+        help='Only show items modified at generation or a newer transaction')
 
     sp_forget_fs = commands.add_parser(
         'forget-fs', help='Wipe all metadata', description="""
 Wipe all metadata for the listed filesystems.
 Useful if the filesystems don't exist anymore.""")
     sp_forget_fs.set_defaults(action=cmd_forget_fs)
-    sp_forget_fs.add_argument('uuid', nargs='+', help='btrfs filesystem uuids')
+    sp_forget_fs.add_argument('uuid', nargs='+', help='Btrfs filesystem uuids')
     sql_flags(sp_forget_fs)
 
     sp_dedup_files = commands.add_parser(
@@ -392,18 +392,18 @@ The effects are visible with filefrag -v (apt:e2fsprogs),
 which displays the extent map of files.
         """.strip())
     sp_dedup_files.set_defaults(action=cmd_dedup_files)
-    sp_dedup_files.add_argument('source', metavar='SRC', help='source file')
+    sp_dedup_files.add_argument('source', metavar='SRC', help='Source file')
     sp_dedup_files.add_argument(
-        'dests', metavar='DEST', nargs='+', help='dest files')
+        'dests', metavar='DEST', nargs='+', help='Dest files')
     sp_dedup_files.add_argument(
         '--defragment', action='store_true',
-        help='defragment the source file first')
+        help='Defragment the source file first')
 
     sp_generation = commands.add_parser(
         'generation', help='Display volume generation', description="""
 Display the btrfs generation of VOLUME.""")
     sp_generation.set_defaults(action=cmd_generation)
-    sp_generation.add_argument('volume', help='btrfs volume')
+    sp_generation.add_argument('volume', help='Btrfs volume')
     sp_generation.add_argument(
         '--flush', action='store_true', dest='flush',
         help='Flush outstanding data using syncfs before lookup')
