@@ -354,6 +354,18 @@ class WholeFS(object):
         self._vol_map = {}
         self._label_occurs = None
 
+    def get_fs_existing(self, uuid):
+        assert isinstance(uuid, UUID)
+        if uuid not in self._fs_map:
+            try:
+                db_fs = self.sess.query(
+                    BtrfsFilesystem).filter_by(uuid=str(uuid)).one()
+            except NoResultFound:
+                raise KeyError(uuid)
+            fs = BtrfsFilesystem2(self, db_fs, uuid)
+            self._fs_map[uuid] = fs
+        return self._fs_map[uuid]
+
     def get_fs(self, uuid):
         assert isinstance(uuid, UUID)
         if uuid not in self._fs_map:

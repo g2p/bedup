@@ -226,7 +226,8 @@ def user_confirmation(message, default):
 def cmd_forget_fs(args):
     sess = get_session(args)
     whole_fs = WholeFS(sess)
-    filesystems = [whole_fs.get_fs(UUID(hex=uuid)) for uuid in args.uuid]
+    filesystems = [
+        whole_fs.get_fs_existing(UUID(hex=uuid)) for uuid in args.uuid]
     for fs in filesystems:
         if not user_confirmation('Wipe all data about fs %s?' % fs, False):
             continue
