@@ -91,6 +91,7 @@ class BtrfsFilesystem2(object):
         self._minfos = None
 
         try:
+            # XXX Not in the db schema yet
             self._impl.label = self.label
         except NotPlugged:
             # XXX No point creating a live object in this case
@@ -124,8 +125,12 @@ class BtrfsFilesystem2(object):
 
     @memoized_property
     def desc(self):
-        if self.label and self._whole_fs._label_occurs[self.label] == 1:
-            return '<%s>' % self.label
+        try:
+            if self.label and self._whole_fs._label_occurs[self.label] == 1:
+                return '<%s>' % self.label
+        except NotPlugged:
+            # XXX Keep the label in the db?
+            pass
         return '{%s}' % self.uuid
 
     def best_desc(self, root_id):

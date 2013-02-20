@@ -226,14 +226,14 @@ def user_confirmation(message, default):
 def cmd_forget_fs(args):
     sess = get_session(args)
     whole_fs = WholeFS(sess)
-    filesystems = [whole_fs.get_fs(uuid) for uuid in args.uuid]
+    filesystems = [whole_fs.get_fs(UUID(hex=uuid)) for uuid in args.uuid]
     for fs in filesystems:
         if not user_confirmation('Wipe all data about fs %s?' % fs, False):
             continue
-        for vol in fs.volumes:
+        for vol in fs._impl.volumes:
             # A lot of things will cascade
             sess.delete(vol)
-        sess.delete(fs)
+        sess.delete(fs._impl)
         sess.commit()
         print('Wiped all data about %s' % fs)
 
