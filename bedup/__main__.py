@@ -51,7 +51,7 @@ APP_NAME = 'bedup'
 
 def cmd_dedup_files(args):
     try:
-        return dedup_same(args.source, args.dests, args.defragment)
+        return dedup_same(args.source, args.dests, args.defrag)
     except FilesInUseError as exn:
         exn.describe(sys.stderr)
         return 1
@@ -177,11 +177,11 @@ def vol_cmd(args):
             if args.groupby == 'vol':
                 for vol in vols:
                     tt.notify('Deduplicating volume %s' % vol)
-                    dedup_tracked(sess, [vol], tt)
+                    dedup_tracked(sess, [vol], tt, defrag=args.defrag)
             elif args.groupby == 'mpoint':
                 for fs, volset in vols_by_fs.iteritems():
                     tt.notify('Deduplicating filesystem %s' % fs)
-                    dedup_tracked(sess, volset, tt)
+                    dedup_tracked(sess, volset, tt, defrag=args.defrag)
             else:
                 assert False, args.groupby
 
@@ -334,9 +334,12 @@ Scans volumes to keep track of potentially duplicated files.""")
 Runs scan, then deduplicates identical files.""")
     sp_dedup_vol.set_defaults(action=vol_cmd)
     scan_flags(sp_dedup_vol)
+    sp_dedup_vol.add_argument(
+        '--defrag', action='store_true',
+        help='Defragment files that are going to be deduplicated')
 
     # An alias so as not to break btrfs-time-machine.
-    # No help; which should make it (mostly) invisible.
+    # help='' is unset, which should make it (mostly) invisible.
     sp_dedup_vol_compat = commands.add_parser(
         'dedup-vol', description="""
 A deprecated alias for the 'dedup' command.""")
@@ -397,7 +400,7 @@ which displays the extent map of files.
     sp_dedup_files.add_argument(
         'dests', metavar='DEST', nargs='+', help='Dest files')
     sp_dedup_files.add_argument(
-        '--defragment', action='store_true',
+        '--defrag', action='store_true',
         help='Defragment the source file first')
 
     sp_generation = commands.add_parser(

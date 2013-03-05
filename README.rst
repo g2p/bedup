@@ -149,6 +149,18 @@ read-only snapshots.
 
 Before Linux 3.6, the clone call didn't work across subvolumes.
 
+Defragmentation
+---------------
+
+Before Linux 3.9, defragmentation could break copy-on-write sharing,
+which made it inadvisable when snapshots or deduplication are used.
+Btrfs defragmentation has to be explicitly requested (or background
+defragmentation enabled), so this generally shouldn't be a problem for
+users who were unaware of the feature.
+
+Users of Linux 3.9 or newer can safely pass the `--defrag` option to
+`bedup dedup`, which will defragment files before deduplicating them.
+
 Build status
 ============
 

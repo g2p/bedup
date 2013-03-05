@@ -36,7 +36,7 @@ from uuid import UUID
 
 from .compat import fsdecode
 from .platform.btrfs import (
-    get_root_generation, clone_data, defragment)
+    get_root_generation, clone_data, defragment as btrfs_defragment)
 from .platform.openat import fopenat, fopenat_rw
 
 from .datetime import system_now
@@ -358,7 +358,7 @@ class WindowedQuery(object):
         return self.clear_updates(self.upper_bound, 0)
 
 
-def dedup_tracked(sess, volset, tt):
+def dedup_tracked(sess, volset, tt, defrag):
     fs = volset[0].fs
     vol_ids = [vol.impl.id for vol in volset]
     assert all(vol.fs == fs for vol in volset)
@@ -378,14 +378,14 @@ def dedup_tracked(sess, volset, tt):
             'sampled {mhash:counter} hashed {fhash:counter} '
             'freed {space_gain:size}')
         tt.set_total(comm1=le)
-        dedup_tracked1(sess, tt, ofile_reserved, query, fs)
+        dedup_tracked1(sess, tt, ofile_reserved, query, fs, defrag)
     else:
         query.clear_all_updates()
     sess.commit()
     tt.format(None)
 
 
-def dedup_tracked1(sess, tt, ofile_reserved, query, fs):
+def dedup_tracked1(sess, tt, ofile_reserved, query, fs, defrag):
     space_gain = 0
     ofile_soft, ofile_hard = resource.getrlimit(resource.RLIMIT_OFILE)
 
@@ -558,8 +558,8 @@ def dedup_tracked1(sess, tt, ofile_reserved, query, fs):
                         fd_names[sfd])
                     # Commented out, defragmentation can unshare extents.
                     # It can also disable compression as a side-effect.
-                    if False:
-                        defragment(sfd)
+                    if defrag:
+                        btrfs_defragment(sfd)
                     dfiles = fileset[1:]
                     dfiles_successful = []
                     for dfile in dfiles:
