@@ -8,7 +8,7 @@ Requirements
 ============
 
 You need Python 2.7 (recommended), Python 3.3, Python 3.2, or PyPy. You
-need Linux 3.3 or newer, with glibc 2.14 or newer.
+need Linux 3.3 or newer.
 
 This should get you started on Debian/Ubuntu:
 
