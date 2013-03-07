@@ -113,6 +113,7 @@ def vol_cmd(args):
         sys.stderr.write(
             "The dedup-vol command is deprecated, please use dedup.\n")
         args.command = 'dedup'
+        args.defrag = False
     elif args.command == 'reset' and not args.filter:
         sys.stderr.write("You need to list volumes explicitly.\n")
         return 1
@@ -399,6 +400,7 @@ which displays the extent map of files.
     sp_dedup_files.add_argument('source', metavar='SRC', help='Source file')
     sp_dedup_files.add_argument(
         'dests', metavar='DEST', nargs='+', help='Dest files')
+    # Don't forget to also set new options in the dedup-vol test in vol_cmd
     sp_dedup_files.add_argument(
         '--defrag', action='store_true',
         help='Defragment the source file first')
