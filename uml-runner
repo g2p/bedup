@@ -4,8 +4,10 @@ set -o pipefail
 cd "$(dirname "$0")"
 mount -t proc proc /proc
 mount -t sysfs sysfs /sys
+
 cmd=$(python3 -Sc 'import urllib.parse, sys; print(urllib.parse.unquote(sys.argv[1]))' "$BEDUP_CMD")
 printf "Will run $cmd\n"
 eval -- "$cmd"
+
 halt -f
 
