@@ -17,7 +17,7 @@ script:
 - bunzip2 -k kernel64-3.7.10.bz2
 - chmod +x kernel64-3.7.10
 # Travis has PyPy 1.9 which is too old (want a PPA to upgrade).
-- ./kernel64-3.7.10 rootfstype=hostfs rw init=~+/uml-runner "HOME=$HOME" "PATH=$PATH" PIP_USE_MIRRORS=true mem=128M quiet BEDUP_CMD="tox%20-e%20pypy" \
+- ./kernel64-3.7.10 rootfstype=hostfs rw init=~+/uml-runner mem=128M quiet "HOME=$HOME" "PATH=$PATH" PIP_USE_MIRRORS=true GETROOT= BEDUP_CMD="tox%20-e%20pypy" \
     || echo "Ignoring PyPy failures on Travis"
-- ./kernel64-3.7.10 rootfstype=hostfs rw init=~+/uml-runner "HOME=$HOME" "PATH=$PATH" PIP_USE_MIRRORS=true mem=128M quiet BEDUP_CMD="tox%20-e%20py33,py32,py27"
+- ./kernel64-3.7.10 rootfstype=hostfs rw init=~+/uml-runner mem=128M quiet "HOME=$HOME" "PATH=$PATH" PIP_USE_MIRRORS=true GETROOT= BEDUP_CMD="tox%20-e%20py33,py32,py27"
 

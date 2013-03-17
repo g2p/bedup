@@ -97,7 +97,7 @@ To run the tests::
 
 To test compatibility and packaging as well::
 
-   tox
+   GETROOT=/usr/bin/sudo tox
 
 Run a style check on edited files::
 
