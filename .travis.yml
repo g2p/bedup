@@ -5,7 +5,9 @@ install:
 - lsb_release -a
 - pypy --version
 - sudo touch /etc/suid-debug
-- sudo apt-get -y install libffi-dev btrfs-tools
+# Travis has a python3, but not the bin/python3 command
+- sudo apt-get -y install libffi-dev btrfs-tools python3-minimal
+- which python3
 - pip install --use-mirrors tox cffi
 
 # tox has some advantages over travis runners:
