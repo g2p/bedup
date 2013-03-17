@@ -10,11 +10,11 @@ install:
 - which python3
 # Those exports make sure pip invocations through tox, virtualenv, etc
 # hit the cache. Travis is stupid to document manual addition of cli flags
-# instead of exporting those vars.
+# instead of exporting those vars (or shipping a pip.ini).
 - export PIP_USE_MIRRORS=true
 - export PIP_DOWNLOAD_CACHE=~/.cache
 - export PYTHONDONTWRITEBYTECODE=1
-- pip install tox cffi
+- pip install cffi hg+https://bitbucket.org/g2p/tox#egg=tox
 # Prime the cache so that UML won't try to use the network
 # pypy will probably fail (outdated package)
 - time GETROOT= tox --notest || true
