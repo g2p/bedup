@@ -6,7 +6,7 @@ install:
 - pypy --version
 - sudo touch /etc/suid-debug
 # Travis has a python3, but not the bin/python3 command
-- sudo apt-get -y install libffi-dev btrfs-tools python3-minimal
+- sudo apt-get -y install libffi-dev btrfs-tools python3-minimal user-mode-linux
 - which python3
 # Those exports make sure pip invocations through tox, virtualenv, etc
 # hit the cache. Travis is stupid to document manual addition of cli flags
@@ -18,10 +18,6 @@ install:
 # Prime the cache so that UML won't try to use the network
 # pypy will probably fail (outdated package)
 - time GETROOT= tox --notest || true
-# XXX Travis really needs a caching proxy, because this is abusive of the Coral CDN
-- time wget -c http://uml.devloop.org.uk.nyud.net/kernels/kernel64-3.7.10.bz2 # 37M
-- bunzip2 -k kernel64-3.7.10.bz2
-- chmod +x kernel64-3.7.10
 
 # tox has some advantages over travis runners:
 # it tests installation from the sdist, which will
@@ -29,11 +25,11 @@ install:
 
 script:
 # Travis has PyPy 1.9 which is too old (want a PPA to upgrade).
-- ./kernel64-3.7.10 rootfstype=hostfs rw init=~+/uml-runner mem=128M quiet \
+- linux.uml rootfstype=hostfs rw init=~+/uml-runner mem=128M quiet \
     "HOME=$HOME" "PATH=$PATH" PIP_USE_MIRRORS=true GETROOT= PYTHONDONTWRITEBYTECODE=1 \
     BEDUP_CMD="tox%20-e%20pypy" \
     || echo "Ignoring PyPy failures on Travis"
-- ./kernel64-3.7.10 rootfstype=hostfs rw init=~+/uml-runner mem=128M quiet \
+- linux.uml rootfstype=hostfs rw init=~+/uml-runner mem=128M quiet \
     "HOME=$HOME" "PATH=$PATH" PIP_USE_MIRRORS=true GETROOT= PYTHONDONTWRITEBYTECODE=1 \
     BEDUP_CMD="tox%20-e%20py33,py32,py27"
 
