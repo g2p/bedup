@@ -43,7 +43,6 @@ class build_py_with_cffi_marker(build_py):
         os.rename(marker_path2, marker_path)
 
 
-
 install_requires = [
     'alembic',  # XXX I need Alembic, but not Mako or MarkupSafe.
     'cffi >= 0.4.2',
@@ -72,7 +71,7 @@ setup(
             'bedup = bedup.__main__:script_main']},
     cmdclass=dict(build_py=build_py_with_cffi_marker),
     ext_modules=get_ext_modules(),
-    ext_package='bedup',
+    ext_package='bedup.platform',
     packages=[
         'bedup',
         'bedup.platform',
