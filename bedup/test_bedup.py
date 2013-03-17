@@ -99,12 +99,12 @@ def test_functional():
     boxed_call('scan --size-cutoff=65536 --'.split() + [fs, fs])
     boxed_call('dedup --'.split() + [fs])
     boxed_call(
-        'dedup-files --defragment --'.split() +
+        'dedup-files --defrag --'.split() +
         [fs + '/one.sample', fs + '/two.sample'])
     stat0 = stat(fs + '/one.sample')
     with open(fs + '/one.sample', 'r+') as busy_file:
         boxed_call(
-            'dedup-files --defragment --'.split() +
+            'dedup-files --defrag --'.split() +
                 [fs + '/one.sample', fs + '/two.sample'],
             expected_rv=1)
     stat1 = stat(fs + '/one.sample')
