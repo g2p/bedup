@@ -1,0 +1,22 @@
+#!/usr/bin/python3 -S
+import os, subprocess, urllib.parse
+
+unquote = urllib.parse.unquote
+
+subprocess.check_call('mount -t proc proc /proc'.split())
+subprocess.check_call('mount -t sysfs sysfs /sys'.split())
+
+# At least the Debian and Ubuntu package uses this
+subprocess.call('mount -t hostfs -o /usr/lib/uml/modules hostfs /lib/modules'.split())
+
+uml_env = os.environ['UML_ENV']
+uml_cmd = os.environ['UML_CMD']
+
+uml_cmd = [unquote(arg) for arg in uml_cmd.split('+')]
+uml_env = {unquote(var): unquote(val) for (var, val) in
+           (item.split('=', 1) for item in uml_env.split(';'))}
+cwd = uml_env['PWD']
+
+subprocess.check_call(uml_cmd, cwd=cwd, env=uml_env)
+subprocess.check_call('/sbin/halt -f'.split())
+

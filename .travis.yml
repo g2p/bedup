@@ -13,11 +13,8 @@ install:
 # instead of exporting those vars (or shipping a pip.ini).
 - export PIP_USE_MIRRORS=true
 - export PIP_DOWNLOAD_CACHE=~/.cache
-- export PYTHONDONTWRITEBYTECODE=1
+- export UML_MEM=192M
 - pip install cffi hg+https://bitbucket.org/g2p/tox#egg=tox
-# Prime the cache so that UML won't try to use the network
-# pypy will probably fail (outdated package)
-- time GETROOT= tox --notest || true
 
 # tox has some advantages over travis runners:
 # it tests installation from the sdist, which will
@@ -25,11 +22,7 @@ install:
 
 script:
 # Travis has PyPy 1.9 which is too old (want a PPA to upgrade).
-- linux.uml rootfstype=hostfs rw init=~+/uml-runner mem=128M quiet \
-    "HOME=$HOME" "PATH=$PATH" PIP_USE_MIRRORS=true GETROOT= PYTHONDONTWRITEBYTECODE=1 \
-    BEDUP_CMD="tox%20-e%20pypy" \
+- time GETROOT="$PWD/tools/enter-uml" tox -e pypy \
     || echo "Ignoring PyPy failures on Travis"
-- linux.uml rootfstype=hostfs rw init=~+/uml-runner mem=192M quiet \
-    "HOME=$HOME" "PATH=$PATH" PIP_USE_MIRRORS=true GETROOT= PYTHONDONTWRITEBYTECODE=1 \
-    BEDUP_CMD="tox%20-e%20py33,py32,py27"
+- time GETROOT="$PWD/tools/enter-uml" tox -e py33,py27,py32
 

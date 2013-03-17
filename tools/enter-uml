@@ -1,0 +1,28 @@
+#!/usr/bin/python3 -S
+import os, sys, urllib.parse
+runner = os.path.abspath('tools/uml-stub')
+assert ' ' not in runner
+
+quote = urllib.parse.quote
+
+# HOME and TERM seem to be set by the kernel (as well as root and the kernel
+# cmdline), the rest would be set by a shell
+preserve_vars = 'HOME PWD PATH'.split()
+
+# Idea from debuild
+if 'UML_PRESERVE_ENVVARS' in os.environ:
+    for name in os.environ['UML_PRESERVE_ENVVARS'].split():
+        if name in os.environ:
+            preserve_vars.append(name)
+
+os.execv(
+    '/usr/bin/linux.uml',
+    'linux.uml rootfstype=hostfs rw quiet'.split()
+    + [
+        'mem=' + os.environ.get('UML_MEM', '128M'),
+        'init=' + runner,
+        'UML_ENV=' + ';'.join(
+            quote(var) + '=' + quote(os.environ[var])
+            for var in preserve_vars),
+        'UML_CMD=' + '+'.join(map(quote, sys.argv[1:]))])
+
