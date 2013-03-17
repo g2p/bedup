@@ -3,7 +3,7 @@
 from setuptools import setup
 from shutil import copystat
 from sys import version_info
-from distutils.command.build_py import build_py
+from setuptools.command.build_py import build_py
 
 import os
 
