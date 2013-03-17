@@ -8,7 +8,12 @@ install:
 # Travis has a python3, but not the bin/python3 command
 - sudo apt-get -y install libffi-dev btrfs-tools python3-minimal
 - which python3
-- pip install --use-mirrors tox cffi
+# Those exports make sure pip invocations through tox, virtualenv, etc
+# hit the cache. Travis is stupid to document manual addition of cli flags
+# instead of exporting those vars.
+- export PIP_USE_MIRRORS=true
+- export PIP_DOWNLOAD_CACHE=~/.cache
+- pip install tox cffi
 # Prime the cache so that UML won't try to use the network
 - GETROOT= tox --notest
 # XXX Travis really needs a caching proxy, because this is abusive of the Coral CDN
