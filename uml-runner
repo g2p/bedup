@@ -1,0 +1,8 @@
+#!/bin/bash
+set -e
+cd "$(dirname "$0")"
+mount -t proc proc /proc
+mount -t sysfs sysfs /sys
+eval "$BEDUP_CMD"
+halt -f
+

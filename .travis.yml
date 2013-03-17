@@ -12,11 +12,12 @@ install:
 # it tests installation from the sdist, which will
 # report things like missing header files.
 
-# Ignore PyPy failures on Travis.
-# Travis has PyPy 1.9 which is too old (want a PPA to upgrade).
 script:
-- export PIP_USE_MIRRORS=true
-- tox -e pypy || true
-# Looking at /proc/vz would also work.
-- tox -e py33,py32,py27 || { hostname -d |grep -q blueboxgrid; }
+- wget -c http://uml.devloop.org.uk.nyud.net/kernels/kernel64-3.7.10.bz2 # 37M
+- bunzip2 -k kernel64-3.7.10.bz2
+- chmod +x kernel64-3.7.10
+# Travis has PyPy 1.9 which is too old (want a PPA to upgrade).
+- ./kernel64-3.7.10 rootfstype=hostfs rw init=~+/uml-runner "HOME=$HOME" "PATH=$PATH" PIP_USE_MIRRORS=true mem=128M quiet BEDUP_CMD="tox -e pypy" \
+    || echo "Ignoring PyPy failures on Travis"
+- ./kernel64-3.7.10 rootfstype=hostfs rw init=~+/uml-runner "HOME=$HOME" "PATH=$PATH" PIP_USE_MIRRORS=true mem=128M quiet BEDUP_CMD="tox -e py33,py32,py27"
 
