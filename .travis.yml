@@ -29,7 +29,7 @@ script:
     "HOME=$HOME" "PATH=$PATH" PIP_USE_MIRRORS=true GETROOT= PYTHONDONTWRITEBYTECODE=1 \
     BEDUP_CMD="tox%20-e%20pypy" \
     || echo "Ignoring PyPy failures on Travis"
-- linux.uml rootfstype=hostfs rw init=~+/uml-runner mem=128M quiet \
+- linux.uml rootfstype=hostfs rw init=~+/uml-runner mem=192M quiet \
     "HOME=$HOME" "PATH=$PATH" PIP_USE_MIRRORS=true GETROOT= PYTHONDONTWRITEBYTECODE=1 \
     BEDUP_CMD="tox%20-e%20py33,py32,py27"
 
