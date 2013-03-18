@@ -1,6 +1,7 @@
 #!/usr/bin/python3 -S
 import os, sys, urllib.parse
 runner = os.path.abspath('tools/uml-stub')
+assert os.path.exists(runner)
 assert ' ' not in runner
 
 quote = urllib.parse.quote
