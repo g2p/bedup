@@ -28,7 +28,7 @@ import sys
 import threading
 
 from collections import defaultdict, namedtuple
-from contextlib import closing
+from contextlib import closing, contextmanager
 from contextlib2 import ExitStack
 from itertools import groupby
 from sqlalchemy.sql import and_, select, func, literal_column
@@ -385,6 +385,36 @@ def dedup_tracked(sess, volset, tt, defrag):
     tt.format(None)
 
 
+@contextmanager
+def open_by_inode(inode, sess, query):
+    try:
+        pathb = inode.vol.live.lookup_one_path(inode)
+    except IOError as e:
+        if e.errno != errno.ENOENT:
+            raise
+        # Delete stale inodes;
+        # some do survive because the number is reused.
+        sess.delete(inode)
+        yield None
+        return
+
+    try:
+        rfile = fopenat(inode.vol.live.fd, pathb)
+    except IOError as e:
+        if e.errno != errno.ENOENT:
+            raise
+        # Don't delete an inode if it was moved by a racing process;
+        # mark it for the next run.
+        query.skipped.append(inode)
+        yield None
+        return
+
+    try:
+        yield rfile
+    finally:
+        rfile.close()
+
+
 def dedup_tracked1(sess, tt, ofile_reserved, query, fs, defrag):
     space_gain = 0
     ofile_soft, ofile_hard = resource.getrlimit(resource.RLIMIT_OFILE)
@@ -406,23 +436,9 @@ def dedup_tracked1(sess, tt, ofile_reserved, query, fs, defrag):
             # I don't know enough about how inode transaction numbers are
             # updated (as opposed to extent updates) to be able to actually
             # cache the result
-            try:
-                pathb = inode.vol.live.lookup_one_path(inode)
-            except IOError as e:
-                if e.errno != errno.ENOENT:
-                    raise
-                # We have a stale record for a removed inode
-                # XXX If an inode number is reused and the second instance
-                # is below the size cutoff, we won't update the .size
-                # attribute and we won't get an IOError to notify us
-                # either.  Inode reuse does happen (with and without
-                # inode_cache), so this branch isn't enough to rid us of
-                # all stale entries.  We can also get into trouble with
-                # regular file inodes being replaced by some other kind of
-                # inode.
-                sess.delete(inode)
-                continue
-            with closing(fopenat(inode.vol.live.fd, pathb)) as rfile:
+            with open_by_inode(inode, sess, query) as rfile:
+                if rfile is None:
+                    continue
                 by_mh[mini_hash_from_file(inode, rfile)].append(inode)
                 tt.update(mhash=None)
 
@@ -432,14 +448,9 @@ def dedup_tracked1(sess, tt, ofile_reserved, query, fs, defrag):
                 continue
             fies = set()
             for inode in inodes:
-                try:
-                    pathb = inode.vol.live.lookup_one_path(inode)
-                except IOError as e:
-                    if e.errno != errno.ENOENT:
-                        raise
-                    sess.delete(inode)
-                    continue
-                with closing(fopenat(inode.vol.live.fd, pathb)) as rfile:
+                with open_by_inode(inode, sess, query) as rfile:
+                    if rfile is None:
+                        continue
                     fies.add(fiemap_hash_from_file(rfile))
 
             if len(fies) < 2:
