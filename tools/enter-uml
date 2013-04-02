@@ -8,13 +8,17 @@ quote = urllib.parse.quote
 
 # HOME and TERM seem to be set by the kernel (as well as root and the kernel
 # cmdline), the rest would be set by a shell
-preserve_vars = 'HOME PWD PATH'.split()
+preserve_vars = 'HOME TERM PWD PATH SHELL'.split()
 
 # Idea from debuild
 if 'UML_PRESERVE_ENVVARS' in os.environ:
     for name in os.environ['UML_PRESERVE_ENVVARS'].split():
         if name in os.environ:
             preserve_vars.append(name)
+
+cmd = sys.argv[1:]
+if not cmd:
+    cmd = [os.environ['SHELL']]
 
 os.execv(
     '/usr/bin/linux.uml',
@@ -25,5 +29,5 @@ os.execv(
         'UML_ENV=' + ';'.join(
             quote(var) + '=' + quote(os.environ[var])
             for var in preserve_vars),
-        'UML_CMD=' + '+'.join(map(quote, sys.argv[1:]))])
+        'UML_CMD=' + '+'.join(map(quote, cmd))])
 
