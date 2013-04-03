@@ -424,7 +424,7 @@ def lookup_ino_paths(volume_fd, ino, alloc_extra=0):  # pragma: no cover
         yield path
 
 
-def get_fsid(volume_fd):
+def get_fsid(fd):
     if False:  # pragma: nocover
         args = ffi.new('struct btrfs_ioctl_fs_info_args *')
         args_buf = ffi.buffer(args)
@@ -437,18 +437,18 @@ def get_fsid(volume_fd):
         args_buf = ffi.buffer(args_cbuf)
         args = ffi.cast('struct btrfs_ioctl_fs_info_args *', args_cbuf)
     before = tuple(args.fsid)
-    ioctl_pybug(volume_fd, lib.BTRFS_IOC_FS_INFO, args_buf)
+    ioctl_pybug(fd, lib.BTRFS_IOC_FS_INFO, args_buf)
     after = tuple(args.fsid)
     # Check for http://bugs.python.org/issue1520818
     assert after != before, (before, after)
     return uuid.UUID(bytes=buffer_to_bytes(ffi.buffer(args.fsid)))
 
 
-def get_root_id(volume_fd):
+def get_root_id(fd):
     args = ffi.new('struct btrfs_ioctl_ino_lookup_args *')
     # the inode of the root directory
     args.objectid = lib.BTRFS_FIRST_FREE_OBJECTID
-    ioctl_pybug(volume_fd, lib.BTRFS_IOC_INO_LOOKUP, ffi.buffer(args))
+    ioctl_pybug(fd, lib.BTRFS_IOC_INO_LOOKUP, ffi.buffer(args))
     return args.treeid
 
 

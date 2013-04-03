@@ -38,7 +38,7 @@ from .platform.ioprio import set_idle_priority
 from .platform.syncfs import syncfs
 
 from .dedup import dedup_same, FilesInUseError
-from .filesystem import show_vols, WholeFS
+from .filesystem import show_vols, WholeFS, NotAVolume
 from .migrations import upgrade_schema
 from .termupdates import TermTemplate
 from .tracking import (
@@ -132,14 +132,27 @@ def vol_cmd(args):
             for filt in args.filter:
                 if filt.startswith('vol:/'):
                     volpath = filt[4:]
-                    filt_vols = whole_fs.load_vols(
-                        [volpath], tt, recurse=False)
+                    try:
+                        filt_vols = whole_fs.load_vols(
+                            [volpath], tt, recurse=False)
+                    except NotAVolume:
+                        sys.stderr.write(
+                            'Path doesn\'t point to a btrfs volume: %r\n'
+                            % (volpath,))
+                        return 1
                 elif filt.startswith('/'):
                     if os.path.realpath(filt).startswith('/dev/'):
                         filt_vols = whole_fs.load_vols_for_device(filt, tt)
                     else:
-                        filt_vols = whole_fs.load_vols(
-                            [filt], tt, recurse=True)
+                        volpath = filt
+                        try:
+                            filt_vols = whole_fs.load_vols(
+                                [volpath], tt, recurse=True)
+                        except NotAVolume:
+                            sys.stderr.write(
+                                'Path doesn\'t point to a btrfs volume: %r\n'
+                                % (volpath,))
+                            return 1
                 else:
                     try:
                         uuid = UUID(hex=filt)

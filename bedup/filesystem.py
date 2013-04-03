@@ -70,6 +70,12 @@ class BadDevice(RuntimeError):
     pass
 
 
+class NotAVolume(RuntimeError):
+    # Not a BtrFS volume
+    # For example: not btrfs, or normal directory within a btrfs fs
+    pass
+
+
 def path_isprefix(prefix, path):
     # prefix and path must be absolute and normalised,
     # including symlink resolution.
@@ -325,7 +331,12 @@ class Volume2(object):
 
     @classmethod
     def vol_id_of_fd(cls, fd):
-        return get_fsid(fd), get_root_id(fd)
+        try:
+            return get_fsid(fd), get_root_id(fd)
+        except IOError as err:
+            if err.errno == errno.ENOTTY:
+                raise NotAVolume(fd)
+            raise
 
     def close(self):
         os.close(self._fd)
@@ -411,6 +422,8 @@ class WholeFS(object):
         return self._get_vol(fd, desc)
 
     def _get_vol(self, fd, desc):
+        if not is_subvolume(fd):
+            raise NotAVolume(fd, desc)
         vol_id = Volume2.vol_id_of_fd(fd)
 
         # If a volume was given multiple times on the command line,
