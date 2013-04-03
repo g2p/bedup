@@ -401,7 +401,7 @@ def open_by_inode(inode, sess, query):
     try:
         rfile = fopenat(inode.vol.live.fd, pathb)
     except IOError as e:
-        if e.errno != errno.ENOENT:
+        if e.errno not in (errno.ENOENT, errno.EISDIR):
             raise
         # Don't delete an inode if it was moved by a racing process;
         # mark it for the next run.
