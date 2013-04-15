@@ -358,6 +358,14 @@ class WindowedQuery(object):
         return self.clear_updates(self.upper_bound, 0)
 
 
+def hardcode_params_unsafe(query):
+    # Only tested with ints on sqlite
+    # Used to work around the sqlite parameter limit
+    q2 = query.compile()
+    q2.visit_bindparam = q2.render_literal_bindparam
+    return q2.process(query)
+
+
 def dedup_tracked(sess, volset, tt, defrag):
     fs = volset[0].fs
     vol_ids = [vol.impl.id for vol in volset]
@@ -369,6 +377,9 @@ def dedup_tracked(sess, volset, tt, defrag):
 
     inode = Inode.__table__
     inode_filt = inode.c.vol_id.in_(vol_ids)
+    if len(volset) > 490:
+        # SQLite 3 has a hardcoded limit on query parameters
+        inode_filt = hardcode_params_unsafe(inode_filt)
     query = WindowedQuery(sess, inode, inode_filt, tt)
     le = len(query)
 
