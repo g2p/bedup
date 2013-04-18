@@ -635,6 +635,45 @@ def clone_data(dest, src, check_first):
     return True
 
 
+MAX_DEDUP_LEN = 2**20
+
+def ranges_same(length, src, dests):
+    dest_count = len(dests)
+    assert dest_count
+    assert length > 0
+
+    statuses = [set() for i in range(dest_count)]
+    dedup_lens = [0 for i in range(dest_count)]
+
+    alloc_size = (
+        ffi.sizeof('struct btrfs_ioctl_same_args')
+        + dest_count * ffi.sizeof('struct btrfs_ioctl_same_extent_info'))
+
+    if alloc_size == 1024:
+        alloc_size += 1
+
+    # keep a reference around; the cast struct won't have ownership
+    args_cbuf = ffi.new('char[]', alloc_size)
+    args = ffi.cast('struct btrfs_ioctl_same_args *', args_cbuf)
+    # Misnamed, think total_dest_files
+    args.total_files = dest_count
+    src_fd, args.logical_offset = src
+
+    while length > 0:
+        args.length = len_i = min(length, MAX_DEDUP_LEN)
+        length -= len_i
+        for i in range(dest_count):
+            args.info[i].fd, args.info[i].logical_offset = fd, offset = dests[i]
+            dests[i] = (fd, offset + len_i)
+        ioctl_pybug(src_fd, lib.BTRFS_IOC_FILE_EXTENT_SAME, ffi.buffer(args_cbuf))
+        args.logical_offset += len_i
+        for i in range(dest_count):
+            statuses[i].add(args.info[i].status)
+            dedup_lens[i] += args.info[i].bytes_deduped
+
+    return zip(statuses, dedup_lens)
+
+
 def defragment(fd):
     # XXX Can remove compression as a side-effect
     # Also, can unshare extents.
