@@ -130,6 +130,36 @@ struct btrfs_ioctl_ino_lookup_args {
 };
 
 
+/* duperemove/btrfs-ioctl.h */
+
+#define BTRFS_IOC_FILE_EXTENT_SAME ...
+#define BTRFS_SAME_DATA_DIFFERS ...
+
+struct btrfs_ioctl_same_extent_info {
+	int64_t fd;			/* in - destination file */
+	uint64_t logical_offset;	/* in - start of extent in destination */
+	uint64_t bytes_deduped;		/* out - total # of bytes we
+					 * were able to dedupe from
+					 * this file */
+	/* status of this dedupe operation:
+	 * 0 if dedup succeeds
+	 * < 0 for error
+	 * == BTRFS_SAME_DATA_DIFFERS if data differs
+	 */
+	int32_t status;			/* out - see above description */
+	uint32_t reserved;
+};
+
+struct btrfs_ioctl_same_args {
+	uint64_t logical_offset;	/* in - start of extent in source */
+	uint64_t length;		/* in - length of extent */
+	uint16_t total_files;		/* in - total elements in info array */
+	uint16_t files_deduped;		/* out - number of files that got deduped */
+	uint32_t reserved;
+	struct btrfs_ioctl_same_extent_info info[0];
+};
+
+
 /* ctree.h */
 
 #define BTRFS_EXTENT_DATA_KEY ...
@@ -327,11 +357,13 @@ uint64_t btrfs_root_generation(struct btrfs_root_item *s);
 lib = cffi_support.verify(ffi, '''
     #include <btrfs/ioctl.h>
     #include <btrfs/ctree.h>
+    #include <duperemove/btrfs-ioctl.h>
     ''',
     include_dirs=[cffi_support.BTRFS_INCLUDE_DIR])
 
 
 BTRFS_FIRST_FREE_OBJECTID = lib.BTRFS_FIRST_FREE_OBJECTID
+BTRFS_SAME_DATA_DIFFERS = lib.BTRFS_SAME_DATA_DIFFERS
 
 u64_max = ffi.cast('uint64_t', -1)
 

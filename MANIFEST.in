@@ -8,6 +8,7 @@ include btrfs/radix-tree.h
 include btrfs/extent-cache.h
 include btrfs/rbtree.h
 include btrfs/extent_io.h
+include duperemove/btrfs-ioctl.h
 
 include COPYING
 include README.rst

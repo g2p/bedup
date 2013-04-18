@@ -1,3 +1,6 @@
 [submodule "btrfs"]
 	path = btrfs
 	url = https://git.kernel.org/pub/scm/linux/kernel/git/mason/btrfs-progs.git
+[submodule "duperemove"]
+	path = duperemove
+	url = https://github.com/markfasheh/duperemove.git
