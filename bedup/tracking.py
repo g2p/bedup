@@ -371,6 +371,8 @@ def dedup_tracked(sess, volset, tt, defrag):
     vol_ids = [vol.impl.id for vol in volset]
     assert all(vol.fs == fs for vol in volset)
 
+    ds = DedupSession(sess, tt, defrag, fs)
+
     # 3 for stdio, 3 for sqlite (wal mode), 1 that somehow doesn't
     # get closed, 1 per volume.
     ofile_reserved = 7 + len(volset)
@@ -389,7 +391,7 @@ def dedup_tracked(sess, volset, tt, defrag):
             'sampled {mhash:counter} hashed {fhash:counter} '
             'freed {space_gain:size}')
         tt.set_total(comm1=le)
-        dedup_tracked1(sess, tt, ofile_reserved, query, fs, defrag)
+        dedup_tracked1(ds, ofile_reserved, query)
     else:
         query.clear_all_updates()
     sess.commit()
@@ -426,8 +428,16 @@ def open_by_inode(inode, sess, query):
         rfile.close()
 
 
-def dedup_tracked1(sess, tt, ofile_reserved, query, fs, defrag):
-    space_gain = 0
+class DedupSession(object):
+    def __init__(self, sess, tt, defrag, fs):
+        self.sess = sess
+        self.tt = tt
+        self.defrag = defrag
+        self.fs = fs
+        self.space_gain = 0
+
+
+def dedup_tracked1(ds, ofile_reserved, query):
     ofile_soft, ofile_hard = resource.getrlimit(resource.RLIMIT_OFILE)
 
     # Hopefully close any files we left around
@@ -435,7 +445,7 @@ def dedup_tracked1(sess, tt, ofile_reserved, query, fs, defrag):
 
     for comm1 in query:
         size = comm1.size
-        tt.update(comm1=comm1)
+        ds.tt.update(comm1=comm1)
         by_mh = defaultdict(list)
         for inode in comm1.inodes:
             # XXX Need to cope with deleted inodes.
@@ -447,11 +457,11 @@ def dedup_tracked1(sess, tt, ofile_reserved, query, fs, defrag):
             # I don't know enough about how inode transaction numbers are
             # updated (as opposed to extent updates) to be able to actually
             # cache the result
-            with open_by_inode(inode, sess, query) as rfile:
+            with open_by_inode(inode, ds.sess, query) as rfile:
                 if rfile is None:
                     continue
                 by_mh[mini_hash_from_file(inode, rfile)].append(inode)
-                tt.update(mhash=None)
+                ds.tt.update(mhash=None)
 
         for inodes in by_mh.itervalues():
             inode_count = len(inodes)
@@ -459,7 +469,7 @@ def dedup_tracked1(sess, tt, ofile_reserved, query, fs, defrag):
                 continue
             fies = set()
             for inode in inodes:
-                with open_by_inode(inode, sess, query) as rfile:
+                with open_by_inode(inode, ds.sess, query) as rfile:
                     if rfile is None:
                         continue
                     fies.add(fiemap_hash_from_file(rfile))
@@ -482,7 +492,7 @@ def dedup_tracked1(sess, tt, ofile_reserved, query, fs, defrag):
                         resource.RLIMIT_OFILE, (ofile_req, ofile_hard))
                     ofile_soft = ofile_req
                 else:
-                    tt.notify(
+                    ds.tt.notify(
                         'Too many duplicates (%d at size %d), '
                         'would bring us over the open files limit (%d, %d).'
                         % (inode_count, size, ofile_soft, ofile_hard))
@@ -500,7 +510,7 @@ def dedup_tracked1(sess, tt, ofile_reserved, query, fs, defrag):
                     path = fsdecode(pathb)
                 except IOError as e:
                     if e.errno == errno.ENOENT:
-                        sess.delete(inode)
+                        ds.sess.delete(inode)
                         continue
                     raise
                 try:
@@ -509,13 +519,13 @@ def dedup_tracked1(sess, tt, ofile_reserved, query, fs, defrag):
                     if e.errno == errno.ETXTBSY:
                         # The file contains the image of a running process,
                         # we can't open it in write mode.
-                        tt.notify('File %r is busy, skipping' % path)
+                        ds.tt.notify('File %r is busy, skipping' % path)
                     elif e.errno == errno.EACCES:
                         # Could be SELinux or immutability
-                        tt.notify('Access denied on %r, skipping' % path)
+                        ds.tt.notify('Access denied on %r, skipping' % path)
                     elif e.errno == errno.ENOENT:
                         # The file was moved or unlinked by a racing process
-                        tt.notify('File %r may have moved, skipping' % path)
+                        ds.tt.notify('File %r may have moved, skipping' % path)
                     else:
                         raise
                     query.skipped.append(inode)
@@ -542,7 +552,7 @@ def dedup_tracked1(sess, tt, ofile_reserved, query, fs, defrag):
                     fd = afile.fileno()
                     inode = fd_inodes[fd]
                     if fd in immutability.fds_in_write_use:
-                        tt.notify('File %r is in use, skipping' % fd_names[fd])
+                        ds.tt.notify('File %r is in use, skipping' % fd_names[fd])
                         query.skipped.append(inode)
                         continue
                     hasher = hashlib.sha1()
@@ -563,60 +573,61 @@ def dedup_tracked1(sess, tt, ofile_reserved, query, fs, defrag):
                         if size1 < inode.vol.size_cutoff:
                             # if we didn't delete this inode, it would cause
                             # spurious comm groups in all future invocations.
-                            sess.delete(inode)
+                            ds.sess.delete(inode)
                         else:
                             query.skipped.append(inode)
                         continue
 
                     by_hash[hasher.digest()].append(afile)
-                    tt.update(fhash=None)
+                    ds.tt.update(fhash=None)
 
                 for fileset in by_hash.itervalues():
-                    if len(fileset) < 2:
-                        continue
-                    sfile = fileset[0]
-                    sfd = sfile.fileno()
-                    sdesc = fd_inodes[sfd].vol.live.describe_path(
-                        fd_names[sfd])
-                    # Commented out, defragmentation can unshare extents.
-                    # It can also disable compression as a side-effect.
-                    if defrag:
-                        btrfs_defragment(sfd)
-                    dfiles = fileset[1:]
-                    dfiles_successful = []
-                    for dfile in dfiles:
-                        dfd = dfile.fileno()
-                        ddesc = fd_inodes[dfd].vol.live.describe_path(
-                            fd_names[dfd])
-                        if not cmp_files(sfile, dfile):
-                            # Probably a bug since we just used a crypto hash
-                            tt.notify('Files differ: %r %r' % (sdesc, ddesc))
-                            assert False, (sdesc, ddesc)
-                            continue
-                        if clone_data(dest=dfd, src=sfd, check_first=True):
-                            tt.notify(
-                                'Deduplicated:\n- %r\n- %r' % (sdesc, ddesc))
-                            dfiles_successful.append(dfile)
-                            space_gain += size
-                            tt.update(space_gain=space_gain)
-                        elif False:
-                            # Often happens when there are multiple files with
-                            # the same extents, plus one with the same size and
-                            # mini-hash but a difference elsewhere.
-                            # We hash the same extents multiple times, but
-                            # I assume the data is shared in the vfs cache.
-                            tt.notify(
-                                'Did not deduplicate (same extents): %r %r' % (
-                                    sdesc, ddesc))
-                    if dfiles_successful:
-                        evt = DedupEvent(
-                            fs=fs.impl, item_size=size, created=system_now())
-                        sess.add(evt)
-                        for afile in [sfile] + dfiles_successful:
-                            inode = fd_inodes[afile.fileno()]
-                            evti = DedupEventInode(
-                                event=evt, ino=inode.ino, vol=inode.vol)
-                            sess.add(evti)
-                        sess.commit()
-    tt.format(None)
+                    dedup_fileset(ds, fileset, fd_names, fd_inodes, size)
+    ds.tt.format(None)
+
+
+def dedup_fileset(ds, fileset, fd_names, fd_inodes, size):
+    if len(fileset) < 2:
+        return
+    sfile = fileset[0]
+    sfd = sfile.fileno()
+    sdesc = fd_inodes[sfd].vol.live.describe_path(fd_names[sfd])
+    if ds.defrag:
+        btrfs_defragment(sfd)
+    dfiles = fileset[1:]
+    dfiles_successful = []
+    for dfile in dfiles:
+        dfd = dfile.fileno()
+        ddesc = fd_inodes[dfd].vol.live.describe_path(
+            fd_names[dfd])
+        if not cmp_files(sfile, dfile):
+            # Probably a bug since we just used a crypto hash
+            ds.tt.notify('Files differ: %r %r' % (sdesc, ddesc))
+            assert False, (sdesc, ddesc)
+            return
+        if clone_data(dest=dfd, src=sfd, check_first=True):
+            ds.tt.notify(
+                'Deduplicated:\n- %r\n- %r' % (sdesc, ddesc))
+            dfiles_successful.append(dfile)
+            ds.space_gain += size
+            ds.tt.update(space_gain=ds.space_gain)
+        elif False:
+            # Often happens when there are multiple files with
+            # the same extents, plus one with the same size and
+            # mini-hash but a difference elsewhere.
+            # We hash the same extents multiple times, but
+            # I assume the data is shared in the vfs cache.
+            ds.tt.notify(
+                'Did not deduplicate (same extents): %r %r' % (
+                    sdesc, ddesc))
+    if dfiles_successful:
+        evt = DedupEvent(
+            fs=ds.fs.impl, item_size=size, created=system_now())
+        ds.sess.add(evt)
+        for afile in [sfile] + dfiles_successful:
+            inode = fd_inodes[afile.fileno()]
+            evti = DedupEventInode(
+                event=evt, ino=inode.ino, vol=inode.vol)
+            ds.sess.add(evti)
+        ds.sess.commit()
 
