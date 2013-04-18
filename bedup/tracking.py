@@ -34,7 +34,8 @@ from sqlalchemy.sql import and_, select, func, literal_column
 from uuid import UUID
 
 from .platform.btrfs import (
-    get_root_generation, clone_data, defragment as btrfs_defragment)
+    get_root_generation, clone_data, ranges_same,
+    defragment as btrfs_defragment, BTRFS_SAME_DATA_DIFFERS)
 from .platform.openat import fopenat, fopenat_rw
 
 from .datetime import system_now
@@ -620,30 +621,49 @@ def dedup_fileset(ds, fileset, fd_names, fd_inodes, size):
         btrfs_defragment(sfd)
     dfiles = fileset[1:]
     dfiles_successful = []
-    for dfile in dfiles:
-        dfd = dfile.fileno()
-        ddesc = fd_inodes[dfd].vol.live.describe_path(
-            fd_names[dfd])
-        if not cmp_files(sfile, dfile):
-            # Probably a bug since we just used a crypto hash
-            ds.tt.notify('Files differ: %r %r' % (sdesc, ddesc))
-            assert False, (sdesc, ddesc)
-            return
-        if clone_data(dest=dfd, src=sfd, check_first=True):
-            ds.tt.notify(
-                'Deduplicated:\n- %r\n- %r' % (sdesc, ddesc))
-            dfiles_successful.append(dfile)
-            ds.space_gain += size
+    if False:
+        for dfile in dfiles:
+            dfd = dfile.fileno()
+            ddesc = fd_inodes[dfd].vol.live.describe_path(
+                fd_names[dfd])
+            if not cmp_files(sfile, dfile):
+                # Probably a bug since we just used a crypto hash
+                ds.tt.notify('Files differ: %r %r' % (sdesc, ddesc))
+                assert False, (sdesc, ddesc)
+                return
+            if clone_data(dest=dfd, src=sfd, check_first=True):
+                ds.tt.notify(
+                    'Deduplicated:\n- %r\n- %r' % (sdesc, ddesc))
+                dfiles_successful.append(dfile)
+                ds.space_gain += size
+                ds.tt.update(space_gain=ds.space_gain)
+            elif False:
+                # Often happens when there are multiple files with
+                # the same extents, plus one with the same size and
+                # mini-hash but a difference elsewhere.
+                # We hash the same extents multiple times, but
+                # I assume the data is shared in the vfs cache.
+                ds.tt.notify(
+                    'Did not deduplicate (same extents): %r %r' % (
+                        sdesc, ddesc))
+    else:
+        dinfos = ranges_same(
+            size, (sfd, 0), [(dfile.fileno(), 0) for dfile in dfiles])
+        ds.tt.notify('Deduplicated:\n- %r' % (sdesc, ))
+        for (dfile, (statuses, bytes_deduped)) in zip(dfiles, dinfos):
+            if 0 in statuses:
+                dfiles_successful.append(dfile)
+                statuses.remove(0)
+            dfd = dfile.fileno()
+            ddesc = fd_inodes[dfd].vol.live.describe_path(fd_names[dfd])
+            if BTRFS_SAME_DATA_DIFFERS in statuses:
+                ddesc += ' (differences)'
+                statuses.remove(BTRFS_SAME_DATA_DIFFERS)
+            if statuses:
+                ddesc += ' (errors: %s)' % (statuses, )
+            ds.tt.notify('- %r' % (ddesc,))
+            ds.space_gain += bytes_deduped
             ds.tt.update(space_gain=ds.space_gain)
-        elif False:
-            # Often happens when there are multiple files with
-            # the same extents, plus one with the same size and
-            # mini-hash but a difference elsewhere.
-            # We hash the same extents multiple times, but
-            # I assume the data is shared in the vfs cache.
-            ds.tt.notify(
-                'Did not deduplicate (same extents): %r %r' % (
-                    sdesc, ddesc))
     if dfiles_successful:
         evt = DedupEvent(
             fs=ds.fs.impl, item_size=size, created=system_now())
