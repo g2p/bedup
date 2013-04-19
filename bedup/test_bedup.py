@@ -93,8 +93,11 @@ def stat(fname):
 
 
 @contextlib.contextmanager
-def open_cloexec(fname):
-    fd = os.open(fname, os.O_CLOEXEC)
+def open_cloexec(fname, rw=False):
+    if rw:
+        fd = os.open(fname, os.O_CLOEXEC | os.O_RDWR)
+    else:
+        fd = os.open(fname, os.O_CLOEXEC | os.O_RDONLY)
     yield
     os.close(fd)
 
@@ -111,11 +114,16 @@ def test_functional():
         'dedup-files --defrag --'.split() +
         [fs + '/one.sample', fs + '/two.sample'])
     stat0 = stat(fs + '/one.sample')
-    with open_cloexec(fs + '/one.sample') as busy3:
-        boxed_call(
-            'dedup-files --defrag --'.split() +
-                [fs + '/one.sample', fs + '/two.sample'],
-            expected_rv=1)
+    shutil.copy(sampledata1, os.path.join(fs, 'two.sample'))
+    with open_cloexec(fs + '/one.sample', rw=True):
+        with open_cloexec(fs + '/two.sample', rw=True):
+            boxed_call(
+                'dedup-files --defrag --'.split() +
+                    [fs + '/one.sample', fs + '/two.sample'],
+                expected_rv=1)
+    boxed_call(
+        'dedup-files --defrag --'.split() +
+            [fs + '/one.sample', fs + '/two.sample'])
     stat1 = stat(fs + '/one.sample')
     # Check that atime and mtime are restored
     assert stat0 == stat1
