@@ -136,7 +136,7 @@ def teardown_module():
     if vol_fd is not None:
         os.close(vol_fd)
     try:
-        subprocess.check_call('umount --'.split() + [fsimage])
+        subprocess.check_call('umount --'.split() + [fs])
     except subprocess.CalledProcessError:
         # Apparently we kept the vol fd around
         # Not necessarily a bad thing, because keeping references
