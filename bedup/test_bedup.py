@@ -26,12 +26,12 @@ def mk_sample_data(fn):
 
 def setup_module():
     global tdir, db, fs, fsimage, sampledata1, sampledata2, vol_fd
-    tdir = tempfile.TemporaryDirectory(prefix='dedup-tests-')
-    db = tdir.name + '/db.sqlite'
-    fsimage = tdir.name + '/fsimage.btrfs'
-    sampledata1 = mk_sample_data(tdir.name + '/s1.sample')
-    sampledata2 = mk_sample_data(tdir.name + '/s2.sample')
-    fs = tdir.name + '/fs'
+    tdir = tempfile.mkdtemp(prefix='dedup-tests-')
+    db = tdir + '/db.sqlite'
+    fsimage = tdir + '/fsimage.btrfs'
+    sampledata1 = mk_sample_data(tdir + '/s1.sample')
+    sampledata2 = mk_sample_data(tdir + '/s2.sample')
+    fs = tdir + '/fs'
     os.mkdir(fs)
 
     # The older mkfs.btrfs on travis somehow needs 256M;
@@ -145,5 +145,5 @@ def teardown_module():
         subprocess.check_call('lsof -n'.split() + [fs])
         raise
     finally:
-        tdir.cleanup()
+        shutil.rmtree(tdir)
 
