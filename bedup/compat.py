@@ -18,6 +18,7 @@
 # along with bedup.  If not, see <http://www.gnu.org/licenses/>.
 
 import codecs
+import os
 import subprocess
 import sys
 
@@ -88,6 +89,11 @@ else:
     def fsdecode(filename):
         assert isinstance(filename, str)
         return filename.decode(FSENC, 'surrogateescape')
+
+
+if not hasattr(os, 'O_CLOEXEC'):
+    # Monkey-patching.
+    os.O_CLOEXEC = 524288
 
 
 if not hasattr(subprocess, 'check_output'):

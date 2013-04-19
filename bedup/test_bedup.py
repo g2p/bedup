@@ -1,4 +1,6 @@
 
+import contextlib
+import fcntl
 import multiprocessing
 import os
 import shutil
@@ -11,7 +13,7 @@ from .platform.syncfs import syncfs
 from .platform.btrfs import lookup_ino_paths, BTRFS_FIRST_FREE_OBJECTID
 
 from .__main__ import main
-from . import compat  # monkey-patch check_output in py2.6
+from . import compat  # monkey-patch check_output and O_CLOEXEC
 
 # Placate pyflakes
 db = fs = fsimage = sampledata1 = sampledata2 = vol_fd = None
@@ -90,10 +92,17 @@ def stat(fname):
         ['stat', '--printf=atime %x\nmtime %y\n', '--', fname])
 
 
+@contextlib.contextmanager
+def open_cloexec(fname):
+    fd = os.open(fname, os.O_CLOEXEC)
+    yield
+    os.close(fd)
+
+
 def test_functional():
     boxed_call('scan --'.split() + [fs])
-    with open(fs + '/one.sample', 'r+') as busy_file:
-        with open(fs + '/three.sample', 'r+') as busy_file:
+    with open_cloexec(fs + '/one.sample') as busy1:
+        with open_cloexec(fs + '/three.sample') as busy2:
             boxed_call('dedup --'.split() + [fs])
     boxed_call('reset --'.split() + [fs])
     boxed_call('scan --size-cutoff=65536 --'.split() + [fs, fs])
@@ -102,7 +111,7 @@ def test_functional():
         'dedup-files --defrag --'.split() +
         [fs + '/one.sample', fs + '/two.sample'])
     stat0 = stat(fs + '/one.sample')
-    with open(fs + '/one.sample', 'r+') as busy_file:
+    with open_cloexec(fs + '/one.sample') as busy3:
         boxed_call(
             'dedup-files --defrag --'.split() +
                 [fs + '/one.sample', fs + '/two.sample'],
