@@ -7,7 +7,6 @@ import shutil
 import subprocess
 import tempfile
 
-import pytest
 
 from .platform.syncfs import syncfs
 from .platform.btrfs import lookup_ino_paths, BTRFS_FIRST_FREE_OBJECTID
@@ -16,23 +15,24 @@ from .__main__ import main
 from . import compat  # monkey-patch check_output and O_CLOEXEC
 
 # Placate pyflakes
-db = fs = fsimage = sampledata1 = sampledata2 = vol_fd = None
+tdir = db = fs = fsimage = sampledata1 = sampledata2 = vol_fd = None
 
 
-def mk_sample_data():
-    sampledata_fd, sampledata = tempfile.mkstemp(suffix='.sample')
+def mk_sample_data(fn):
     subprocess.check_call(
-        'dd bs=4096 count=2048 if=/dev/urandom'.split() + ['of=' + sampledata])
-    return sampledata
+        'dd bs=4096 count=2048 if=/dev/urandom'.split() + ['of=' + fn])
+    return fn
 
 
 def setup_module():
-    global db, fs, fsimage, sampledata1, sampledata2, vol_fd
-    db_fd, db = tempfile.mkstemp(suffix='.sqlite')
-    fsimage_fd, fsimage = tempfile.mkstemp(suffix='.btrfs')
-    sampledata1 = mk_sample_data()
-    sampledata2 = mk_sample_data()
-    fs = tempfile.mkdtemp(suffix='.mnt')
+    global tdir, db, fs, fsimage, sampledata1, sampledata2, vol_fd
+    tdir = tempfile.TemporaryDirectory(prefix='dedup-tests-')
+    db = tdir.name + '/db.sqlite'
+    fsimage = tdir.name + '/fsimage.btrfs'
+    sampledata1 = mk_sample_data(tdir.name + '/s1.sample')
+    sampledata2 = mk_sample_data(tdir.name + '/s2.sample')
+    fs = tdir.name + '/fs'
+    os.mkdir(fs)
 
     # The older mkfs.btrfs on travis somehow needs 256M;
     # sparse file, costs nothing
@@ -131,15 +131,6 @@ def test_functional():
     boxed_call('show'.split())
 
 
-@pytest.mark.xfail
-def test_lookup_ino_paths():
-    # yeah, crasher. shouldn't happen on those examples though.
-    ino = os.stat(os.path.join(fs, 'one.sample')).st_ino
-    assert tuple(lookup_ino_paths(vol_fd, ino)) == ('one.sample', )
-    assert tuple(
-        lookup_ino_paths(vol_fd, BTRFS_FIRST_FREE_OBJECTID)) == ('/', )
-
-
 def teardown_module():
     if vol_fd is not None:
         os.close(vol_fd)
@@ -154,12 +145,5 @@ def teardown_module():
         subprocess.check_call('lsof -n'.split() + [fs])
         raise
     finally:
-        os.unlink(db)
-        os.unlink(db + '-journal')
-        os.unlink(db + '-wal')
-        os.unlink(db + '-shm')
-        os.unlink(fsimage)
-        os.unlink(sampledata2)
-        os.unlink(sampledata1)
-        os.rmdir(fs)
+        tdir.cleanup()
 
