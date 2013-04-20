@@ -535,7 +535,7 @@ def dedup_tracked1(ds, comm1):
                     continue
                 raise
             try:
-                afile = fopenat_rw(inode.vol.live.fd, path)
+                afile = fopenat(inode.vol.live.fd, path)
             except IOError as e:
                 if e.errno == errno.ETXTBSY:
                     # The file contains the image of a running process,
@@ -565,14 +565,14 @@ def dedup_tracked1(ds, comm1):
             for afile in files:
                 stack.enter_context(closing(afile))
             # Enter this context last
-            immutability = stack.enter_context(ImmutableFDs(fds))
+            #immutability = stack.enter_context(ImmutableFDs(fds))
 
             # With a false positive, some kind of cmp pass that compares
             # all files at once might be more efficient that hashing.
             for afile in files:
                 fd = afile.fileno()
                 inode = fd_inodes[fd]
-                if fd in immutability.fds_in_write_use:
+                if False and fd in immutability.fds_in_write_use:
                     ds.tt.notify('File %r is in use, skipping' % fd_names[fd])
                     ds.skip(inode)
                     continue
