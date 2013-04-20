@@ -659,8 +659,8 @@ def ranges_same(length, src, dests):
     args.total_files = dest_count
     src_fd, args.logical_offset = src
 
-    while length > 0:
-        args.length = len_i = min(length, MAX_DEDUP_LEN)
+    while length >= 4096:
+        args.length = len_i = min(length, MAX_DEDUP_LEN) // 4096 * 4096
         length -= len_i
         for i in range(dest_count):
             args.info[i].fd, args.info[i].logical_offset = fd, offset = dests[i]
