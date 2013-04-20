@@ -43,7 +43,8 @@ def setup_module():
         del env2['LD_PRELOAD']
     subprocess.check_call(
         'mkfs.btrfs -LBedupTest --'.split() + [fsimage], env=env2)
-    subprocess.check_call('mount -t btrfs -o loop --'.split() + [fsimage, fs])
+    subprocess.check_call(
+        'mount -t btrfs -o loop,compress-force=lzo --'.split() + [fsimage, fs])
     shutil.copy(sampledata1, os.path.join(fs, 'one.sample'))
     shutil.copy(sampledata1, os.path.join(fs, 'two.sample'))
     shutil.copy(sampledata2, os.path.join(fs, 'three.sample'))
