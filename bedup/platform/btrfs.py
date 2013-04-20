@@ -433,7 +433,7 @@ def get_fsid(fd):
         # by making sure the buffer size isn't 1024
         args_cbuf = ffi.new(
             'char[]',
-            max(ffi.sizeof('struct btrfs_ioctl_fs_info_args *'), 1025))
+            max(ffi.sizeof('struct btrfs_ioctl_fs_info_args'), 1025))
         args_buf = ffi.buffer(args_cbuf)
         args = ffi.cast('struct btrfs_ioctl_fs_info_args *', args_cbuf)
     before = tuple(args.fsid)
