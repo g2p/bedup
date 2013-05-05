@@ -539,7 +539,7 @@ class WholeFS(object):
         assert self._vol_map
         frozen_skipped = 0
         for vol in lo:
-            if vol.root_info.is_frozen:
+            if vol.root_info.is_frozen and False:
                 vol.close()
                 frozen_skipped += 1
             else:
@@ -584,7 +584,7 @@ class WholeFS(object):
                 for vol in lo:
                     if vol in loaded:
                         continue
-                    if vol.root_info.is_frozen and vol not in sta:
+                    if vol.root_info.is_frozen and vol not in sta and False:
                         vol.close()
                         skipped += 1
                     else:
