@@ -377,8 +377,6 @@ def dedup_tracked(sess, volset, tt, defrag):
     vol_ids = [vol.impl.id for vol in volset]
     assert all(vol.fs == fs for vol in volset)
 
-    ds = DedupSession(sess, tt, defrag, fs)
-
     # 3 for stdio, 3 for sqlite (wal mode), 1 that somehow doesn't
     # get closed, 1 per volume.
     ofile_reserved = 7 + len(volset)
@@ -390,6 +388,7 @@ def dedup_tracked(sess, volset, tt, defrag):
         inode_filt = hardcode_params_unsafe(inode_filt)
     query = WindowedQuery(sess, inode, inode_filt, tt)
     le = len(query)
+    ds = DedupSession(sess, tt, defrag, fs, query, ofile_reserved)
 
     if le:
         # Hopefully close any files we left around
@@ -400,196 +399,202 @@ def dedup_tracked(sess, volset, tt, defrag):
             'sampled {mhash:counter} hashed {fhash:counter} '
             'freed {space_gain:size}')
         tt.set_total(comm1=le)
-        dedup_tracked1(ds, ofile_reserved, query)
+        for comm1 in query:
+            dedup_tracked1(ds, comm1)
+        tt.format(None)
     else:
         query.clear_all_updates()
     sess.commit()
     tt.format(None)
 
 
-@contextmanager
-def open_by_inode(inode, sess, query):
-    try:
-        pathb = inode.vol.live.lookup_one_path(inode)
-    except IOError as e:
-        if e.errno != errno.ENOENT:
-            raise
-        # Delete stale inodes;
-        # some do survive because the number is reused.
-        sess.delete(inode)
-        yield None
-        return
-
-    try:
-        rfile = fopenat(inode.vol.live.fd, pathb)
-    except IOError as e:
-        if e.errno not in (errno.ENOENT, errno.EISDIR):
-            raise
-        # Don't delete an inode if it was moved by a racing process;
-        # mark it for the next run.
-        query.skipped.append(inode)
-        yield None
-        return
-
-    try:
-        yield rfile
-    finally:
-        rfile.close()
-
 
 class DedupSession(object):
-    def __init__(self, sess, tt, defrag, fs):
+    space_gain = 0
+
+    def __init__(self, sess, tt, defrag, fs, query, ofile_reserved):
         self.sess = sess
         self.tt = tt
         self.defrag = defrag
         self.fs = fs
-        self.space_gain = 0
+        self.query = query
+        self.ofile_reserved = ofile_reserved
+        self.ofile_soft, self.ofile_hard = resource.getrlimit(
+            resource.RLIMIT_OFILE)
+
+    def skip(self, inode):
+        self.query.skipped.append(inode)
+
+    @contextmanager
+    def open_by_inode(self, inode):
+        try:
+            pathb = inode.vol.live.lookup_one_path(inode)
+        except IOError as e:
+            if e.errno != errno.ENOENT:
+                raise
+            # Delete stale inodes;
+            # some do survive because the number is reused.
+            self.sess.delete(inode)
+            yield None
+            return
+
+        try:
+            rfile = fopenat(inode.vol.live.fd, pathb)
+        except IOError as e:
+            if e.errno not in (errno.ENOENT, errno.EISDIR):
+                raise
+            # Don't delete an inode if it was moved by a racing process;
+            # mark it for the next run.
+            self.skip(inode)
+            yield None
+            return
+
+        try:
+            yield rfile
+        finally:
+            rfile.close()
 
 
-def dedup_tracked1(ds, ofile_reserved, query):
-    ofile_soft, ofile_hard = resource.getrlimit(resource.RLIMIT_OFILE)
+def dedup_tracked1(ds, comm1):
+    size = comm1.size
+    ds.tt.update(comm1=comm1, size=size)
+    by_mh = defaultdict(list)
+    for inode in comm1.inodes:
+        # XXX Need to cope with deleted inodes.
+        # We cannot find them in the search-new pass, not without doing
+        # some tracking of directory modifications to poke updated
+        # directories to find removed elements.
 
-    for comm1 in query:
-        size = comm1.size
-        ds.tt.update(comm1=comm1, size=size)
-        by_mh = defaultdict(list)
-        for inode in comm1.inodes:
-            # XXX Need to cope with deleted inodes.
-            # We cannot find them in the search-new pass, not without doing
-            # some tracking of directory modifications to poke updated
-            # directories to find removed elements.
+        # rehash everytime for now
+        # I don't know enough about how inode transaction numbers are
+        # updated (as opposed to extent updates) to be able to actually
+        # cache the result
+        with ds.open_by_inode(inode) as rfile:
+            if rfile is None:
+                continue
+            by_mh[mini_hash_from_file(inode, rfile)].append(inode)
+            ds.tt.update(mhash=None)
 
-            # rehash everytime for now
-            # I don't know enough about how inode transaction numbers are
-            # updated (as opposed to extent updates) to be able to actually
-            # cache the result
-            with open_by_inode(inode, ds.sess, query) as rfile:
+    for inodes in by_mh.itervalues():
+        inode_count = len(inodes)
+        if inode_count < 2:
+            continue
+        fies = set()
+        for inode in inodes:
+            with ds.open_by_inode(inode) as rfile:
                 if rfile is None:
                     continue
-                by_mh[mini_hash_from_file(inode, rfile)].append(inode)
-                ds.tt.update(mhash=None)
+                fies.add(fiemap_hash_from_file(rfile))
 
-        for inodes in by_mh.itervalues():
-            inode_count = len(inodes)
-            if inode_count < 2:
+        if len(fies) < 2:
+            continue
+
+        files = []
+        fds = []
+        # For description only
+        fd_names = {}
+        fd_inodes = {}
+        by_hash = defaultdict(list)
+
+        # XXX I have no justification for doubling inode_count
+        ofile_req = 2 * inode_count + ds.ofile_reserved
+        if ofile_req > ds.ofile_soft:
+            if ofile_req <= ds.ofile_hard:
+                resource.setrlimit(
+                    resource.RLIMIT_OFILE, (ofile_req, ds.ofile_hard))
+                ds.ofile_soft = ofile_req
+            else:
+                ds.tt.notify(
+                    'Too many duplicates (%d at size %d), '
+                    'would bring us over the open files limit (%d, %d).'
+                    % (inode_count, size, ds.ofile_soft, ds.ofile_hard))
+                for inode in inodes:
+                    if inode.has_updates:
+                        ds.skip(inode)
                 continue
-            fies = set()
-            for inode in inodes:
-                with open_by_inode(inode, ds.sess, query) as rfile:
-                    if rfile is None:
-                        continue
-                    fies.add(fiemap_hash_from_file(rfile))
 
-            if len(fies) < 2:
-                continue
-
-            files = []
-            fds = []
-            # For description only
-            fd_names = {}
-            fd_inodes = {}
-            by_hash = defaultdict(list)
-
-            # XXX I have no justification for doubling inode_count
-            ofile_req = 2 * inode_count + ofile_reserved
-            if ofile_req > ofile_soft:
-                if ofile_req <= ofile_hard:
-                    resource.setrlimit(
-                        resource.RLIMIT_OFILE, (ofile_req, ofile_hard))
-                    ofile_soft = ofile_req
+        for inode in inodes:
+            # Open everything rw, we can't pick one for the source side
+            # yet because the crypto hash might eliminate it.
+            # We may also want to defragment the source.
+            try:
+                pathb = inode.vol.live.lookup_one_path(inode)
+                path = fsdecode(pathb)
+            except IOError as e:
+                if e.errno == errno.ENOENT:
+                    ds.sess.delete(inode)
+                    continue
+                raise
+            try:
+                afile = fopenat_rw(inode.vol.live.fd, pathb)
+            except IOError as e:
+                if e.errno == errno.ETXTBSY:
+                    # The file contains the image of a running process,
+                    # we can't open it in write mode.
+                    ds.tt.notify('File %r is busy, skipping' % path)
+                elif e.errno == errno.EACCES:
+                    # Could be SELinux or immutability
+                    ds.tt.notify('Access denied on %r, skipping' % path)
+                elif e.errno == errno.ENOENT:
+                    # The file was moved or unlinked by a racing process
+                    ds.tt.notify('File %r may have moved, skipping' % path)
                 else:
-                    ds.tt.notify(
-                        'Too many duplicates (%d at size %d), '
-                        'would bring us over the open files limit (%d, %d).'
-                        % (inode_count, size, ofile_soft, ofile_hard))
-                    for inode in inodes:
-                        if inode.has_updates:
-                            query.skipped.append(inode)
-                    continue
-
-            for inode in inodes:
-                # Open everything rw, we can't pick one for the source side
-                # yet because the crypto hash might eliminate it.
-                # We may also want to defragment the source.
-                try:
-                    pathb = inode.vol.live.lookup_one_path(inode)
-                    path = fsdecode(pathb)
-                except IOError as e:
-                    if e.errno == errno.ENOENT:
-                        ds.sess.delete(inode)
-                        continue
                     raise
-                try:
-                    afile = fopenat_rw(inode.vol.live.fd, pathb)
-                except IOError as e:
-                    if e.errno == errno.ETXTBSY:
-                        # The file contains the image of a running process,
-                        # we can't open it in write mode.
-                        ds.tt.notify('File %r is busy, skipping' % path)
-                    elif e.errno == errno.EACCES:
-                        # Could be SELinux or immutability
-                        ds.tt.notify('Access denied on %r, skipping' % path)
-                    elif e.errno == errno.ENOENT:
-                        # The file was moved or unlinked by a racing process
-                        ds.tt.notify('File %r may have moved, skipping' % path)
-                    else:
-                        raise
-                    query.skipped.append(inode)
+                ds.skip(inode)
+                continue
+
+            # It's not completely guaranteed we have the right inode,
+            # there may still be race conditions at this point.
+            # Gets re-checked below (tell and fstat).
+            fd = afile.fileno()
+            fd_inodes[fd] = inode
+            fd_names[fd] = path
+            files.append(afile)
+            fds.append(fd)
+
+        with ExitStack() as stack:
+            for afile in files:
+                stack.enter_context(closing(afile))
+            # Enter this context last
+            immutability = stack.enter_context(ImmutableFDs(fds))
+
+            # With a false positive, some kind of cmp pass that compares
+            # all files at once might be more efficient that hashing.
+            for afile in files:
+                fd = afile.fileno()
+                inode = fd_inodes[fd]
+                if fd in immutability.fds_in_write_use:
+                    ds.tt.notify('File %r is in use, skipping' % fd_names[fd])
+                    ds.skip(inode)
+                    continue
+                hasher = hashlib.sha1()
+                for buf in iter(lambda: afile.read(BUFSIZE), b''):
+                    hasher.update(buf)
+
+                # Gets rid of a race condition
+                st = os.fstat(fd)
+                if st.st_ino != inode.ino:
+                    ds.skip(inode)
+                    continue
+                if st.st_dev != inode.vol.live.st_dev:
+                    ds.skip(inode)
                     continue
 
-                # It's not completely guaranteed we have the right inode,
-                # there may still be race conditions at this point.
-                # Gets re-checked below (tell and fstat).
-                fd = afile.fileno()
-                fd_inodes[fd] = inode
-                fd_names[fd] = path
-                files.append(afile)
-                fds.append(fd)
+                size1 = afile.tell()
+                if size1 != size:
+                    if size1 < inode.vol.size_cutoff:
+                        # if we didn't delete this inode, it would cause
+                        # spurious comm groups in all future invocations.
+                        ds.sess.delete(inode)
+                    else:
+                        ds.skip(inode)
+                    continue
 
-            with ExitStack() as stack:
-                for afile in files:
-                    stack.enter_context(closing(afile))
-                # Enter this context last
-                immutability = stack.enter_context(ImmutableFDs(fds))
+                by_hash[hasher.digest()].append(afile)
+                ds.tt.update(fhash=None)
 
-                # With a false positive, some kind of cmp pass that compares
-                # all files at once might be more efficient that hashing.
-                for afile in files:
-                    fd = afile.fileno()
-                    inode = fd_inodes[fd]
-                    if fd in immutability.fds_in_write_use:
-                        ds.tt.notify('File %r is in use, skipping' % fd_names[fd])
-                        query.skipped.append(inode)
-                        continue
-                    hasher = hashlib.sha1()
-                    for buf in iter(lambda: afile.read(BUFSIZE), b''):
-                        hasher.update(buf)
-
-                    # Gets rid of a race condition
-                    st = os.fstat(fd)
-                    if st.st_ino != inode.ino:
-                        query.skipped.append(inode)
-                        continue
-                    if st.st_dev != inode.vol.live.st_dev:
-                        query.skipped.append(inode)
-                        continue
-
-                    size1 = afile.tell()
-                    if size1 != size:
-                        if size1 < inode.vol.size_cutoff:
-                            # if we didn't delete this inode, it would cause
-                            # spurious comm groups in all future invocations.
-                            ds.sess.delete(inode)
-                        else:
-                            query.skipped.append(inode)
-                        continue
-
-                    by_hash[hasher.digest()].append(afile)
-                    ds.tt.update(fhash=None)
-
-                for fileset in by_hash.itervalues():
-                    dedup_fileset(ds, fileset, fd_names, fd_inodes, size)
-    ds.tt.format(None)
+            for fileset in by_hash.itervalues():
+                dedup_fileset(ds, fileset, fd_names, fd_inodes, size)
 
 
 def dedup_fileset(ds, fileset, fd_names, fd_inodes, size):
