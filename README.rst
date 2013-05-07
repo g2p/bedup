@@ -8,7 +8,8 @@ Requirements
 ============
 
 You need Python 2.7 (recommended), Python 3.3, Python 3.2, or PyPy. You
-need Linux 3.3 or newer.
+need Linux 3.3 or newer, preferably with `this patch
+<https://github.com/g2p/linux/commit/2f7d4fa25d8ce376a699557fa9dd58eaf001a90d>`_.
 
 This should get you started on Debian/Ubuntu:
 
@@ -116,6 +117,15 @@ the other (this is unlike hard-linking).
 This approach doesn't require special kernel support, but it has two
 downsides: locking has to be done in userspace, and there is no way to
 free space within read-only (frozen) snapshots.
+
+Scanning
+--------
+
+Scanning is done incrementally, the technique is similar to ``btrfs subvolume
+find-new``.  Current kernels have a bug that can cause find-new to end too
+early (always stopping on the same file).  To fix this, build your kernel from
+`here <https://github.com/g2p/linux/tree/btrfs-fixes>`_ or cherry-pick `this
+commit <https://github.com/g2p/linux/commit/2f7d4fa25d8ce376a699557fa9dd58eaf001a90d>`_.
 
 Locking
 -------
