@@ -396,7 +396,7 @@ def dedup_tracked(sess, volset, tt, defrag):
         gc.collect()
 
         tt.format(
-            '{elapsed} Size group {comm1:counter}/{comm1:total} '
+            '{elapsed} Size group {comm1:counter}/{comm1:total} ({size:size}) '
             'sampled {mhash:counter} hashed {fhash:counter} '
             'freed {space_gain:size}')
         tt.set_total(comm1=le)
@@ -451,7 +451,7 @@ def dedup_tracked1(ds, ofile_reserved, query):
 
     for comm1 in query:
         size = comm1.size
-        ds.tt.update(comm1=comm1)
+        ds.tt.update(comm1=comm1, size=size)
         by_mh = defaultdict(list)
         for inode in comm1.inodes:
             # XXX Need to cope with deleted inodes.
