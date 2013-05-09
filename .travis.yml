@@ -16,8 +16,8 @@ install:
 - pip install cffi hg+https://bitbucket.org/g2p/tox#egg=tox
 - curl --compressed -O https://raw.github.com/g2p/kernels/master/linux.uml
 - chmod +x linux.uml
-- git clone https://github.com/g2p/enter-uml.git
-- export GETROOT="$PWD/enter-uml/enter-uml --kernel=./linux.uml --"
+- git clone https://github.com/g2p/vido.git
+- export GETROOT="$PWD/vido/vido --kernel=./linux.uml --"
 
 # tox has some advantages over travis runners:
 # it tests installation from the sdist, which will
