@@ -20,7 +20,7 @@ This should get you started on Debian/Ubuntu:
 Installation
 ============
 
-Install CFFI 0.4.2.
+Install CFFI.
 
 ::
 
