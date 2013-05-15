@@ -18,6 +18,8 @@
 # You should have received a copy of the GNU General Public License
 # along with bedup.  If not, see <http://www.gnu.org/licenses/>.
 
+from __future__ import print_function
+
 import argparse
 import errno
 import os
@@ -256,8 +258,12 @@ def cmd_forget_fs(args):
 def cmd_size_lookup(args):
     sess = get_session(args)
     whole_fs = WholeFS(sess)
+    if args.zero_terminated:
+        end ='\0'
+    else:
+        end = '\n'
     for vol, rp, inode in annotated_inodes_by_size(whole_fs, args.size):
-        print(vol.describe_path(rp))
+        print(vol.describe_path(rp), end=end)
 
     # We've deleted some stale inodes
     sess.commit()
@@ -432,6 +438,9 @@ Display the btrfs generation of VOLUME.""")
 List tracked inodes with a given size.""")
     sp_size_lookup.set_defaults(action=cmd_size_lookup)
     sp_size_lookup.add_argument('size', type=int)
+    sp_size_lookup.add_argument(
+        '-0|--zero-terminated', dest='zero_terminated', action='store_true',
+        help='Use a NUL character as the line separator')
     sql_flags(sp_size_lookup)
 
     sp_shell = commands.add_parser(
