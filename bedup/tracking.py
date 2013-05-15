@@ -88,7 +88,7 @@ def annotated_inodes_by_size(whole_fs, size):
 
     for inode in inodes_by_size(sess, size):
         if inode.vol_id != vol_id:
-            if vol_id is not None:
+            if vol_id is not None and vol is not None:
                 vol.close()
             if inode.vol.fs.uuid != fs_uuid:
                 if fs_uuid is not None:
@@ -99,7 +99,13 @@ def annotated_inodes_by_size(whole_fs, size):
             vol_id = inode.vol_id
             # XXX Handle unavailable filesystems
             # XXX Make the mountpoint read-only
-            vol = fs.load_vol_by_root_id(inode.vol.root_id)
+            try:
+                vol = fs.load_vol_by_root_id(inode.vol.root_id)
+            except KeyError:
+                vol = None
+                continue
+        if vol is None:
+            continue
         try:
             rp = vol.lookup_one_path(inode)
         except IOError as err:
