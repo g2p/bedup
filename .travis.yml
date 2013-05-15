@@ -8,6 +8,8 @@ install:
 - export PIP_DOWNLOAD_CACHE=~/.cache
 - env |grep -i pip || echo "no env vars"
 - cat ~/.pip/pip.ini || echo "no pip.ini"
+- pip install cffi
+- ls -R $PIP_DOWNLOAD_CACHE
 
 script:
 - true
