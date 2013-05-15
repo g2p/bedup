@@ -4,6 +4,7 @@ install:
 - uname -a
 - lsb_release -a
 - pypy --version
+- env
 - export PIP_USE_MIRRORS=true
 - export PIP_DOWNLOAD_CACHE=~/.cache
 - env |grep -i pip || echo "no env vars"
