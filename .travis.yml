@@ -10,9 +10,9 @@ install:
 - which python3
 # Those exports make sure pip invocations through tox, virtualenv, etc
 # hit the cache. Travis is stupid to document manual addition of cli flags
-# instead of exporting those vars (or shipping a pip.ini).
+# instead of exporting those vars (or shipping a pip.conf).
 - export PIP_USE_MIRRORS=true
-- export PIP_DOWNLOAD_CACHE=~/.cache
+- export PIP_DOWNLOAD_CACHE=~/.cache/pip
 - pip install cffi hg+https://bitbucket.org/g2p/tox#egg=tox
 - curl --compressed -O https://raw.github.com/g2p/kernels/master/linux.uml
 - chmod +x linux.uml
