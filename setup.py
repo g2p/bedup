@@ -44,7 +44,10 @@ class build_py_with_cffi_marker(build_py):
 
 
 install_requires = [
-    'alembic',  # XXX I need Alembic, but not Mako or MarkupSafe.
+    # XXX I need Alembic, but not Mako or MarkupSafe.
+    'alembic',
+    # I certainly don't want MarkupSafe to break 3.2 compat
+    'MarkupSafe < 0.16',
     'cffi >= 0.4.2',
     # Requiring this version to get rid of lextab/yacctab
     # files dumped in random places
