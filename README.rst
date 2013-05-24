@@ -8,8 +8,8 @@ Requirements
 ============
 
 You need Python 2.7 (recommended), Python 3.3, Python 3.2, or PyPy. You
-need Linux 3.3 or newer, preferably with `this patch
-<https://github.com/g2p/linux/commit/2f7d4fa25d8ce376a699557fa9dd58eaf001a90d>`_.
+need Linux 3.3 or newer.  Linux 3.9.4 is recommended, because it fixes a
+scanning bug and is compatible with cross-volume deduplication.
 
 This should get you started on Debian/Ubuntu:
 
@@ -122,10 +122,10 @@ Scanning
 --------
 
 Scanning is done incrementally, the technique is similar to ``btrfs subvolume
-find-new``.  Current kernels have a bug that can cause find-new to end too
-early (always stopping on the same file).  To fix this, build your kernel from
-`here <https://github.com/g2p/linux/tree/btrfs-fixes>`_ or cherry-pick `this
-commit <https://github.com/g2p/linux/commit/2f7d4fa25d8ce376a699557fa9dd58eaf001a90d>`_.
+find-new``.  You need an up-to-date kernel (3.9.4, 3.4.47, 3.10) to index
+all files; earlier releases have a bug that causes find-new to end
+prematurely.  The fix can also be cherry-picked from `this commit
+<https://git.kernel.org/cgit/linux/kernel/git/stable/linux-stable.git/patch/?id=514b17caf165ec31d1f6b9d40c645aed55a0b721>`_.
 
 Locking
 -------
