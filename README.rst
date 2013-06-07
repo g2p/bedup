@@ -122,9 +122,10 @@ Scanning
 --------
 
 Scanning is done incrementally, the technique is similar to ``btrfs subvolume
-find-new``.  You need an up-to-date kernel (3.9.4, 3.8.13.1, 3.4.47, 3.10)
-to index all files; earlier releases have a bug that causes find-new to end
-prematurely.  The fix can also be cherry-picked from `this commit
+find-new``.  You need an up-to-date kernel (3.10, 3.9.4, 3.8.13.1, 3.6.11.5,
+3.5.7.14, 3.4.47) to index all files; earlier releases have a bug that
+causes find-new to end prematurely.  The fix can also be cherry-picked
+from `this commit
 <https://git.kernel.org/cgit/linux/kernel/git/stable/linux-stable.git/patch/?id=514b17caf165ec31d1f6b9d40c645aed55a0b721>`_.
 
 Locking
