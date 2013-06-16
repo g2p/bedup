@@ -602,8 +602,8 @@ class WholeFS(object):
 
 
 BLKID_RE = re.compile(
-    br'^(?P<dev>/dev/.*):\s+'
-    br'(?:LABEL="(?P<label>[^"]*)"|\s+UUID="(?P<uuid>[^"]*)")+\s*$')
+    br'^(?P<dev>/dev/.*):'
+    br'(?:\s+LABEL="(?P<label>[^"]*)"|\s+UUID="(?P<uuid>[^"]*)")+\s*$')
 
 
 def is_subvolume(btrfs_mountpoint_fd):
