@@ -15,7 +15,7 @@ from .__main__ import main
 from . import compat  # monkey-patch check_output and O_CLOEXEC
 
 # Placate pyflakes
-tdir = db = fs = fsimage = sampledata1 = sampledata2 = vol_fd = None
+tdir = db = fs = fsimage = fsimage2 = sampledata1 = sampledata2 = vol_fd = None
 
 
 def mk_sample_data(fn):
@@ -25,10 +25,11 @@ def mk_sample_data(fn):
 
 
 def setup_module():
-    global tdir, db, fs, fsimage, sampledata1, sampledata2, vol_fd
+    global tdir, db, fs, fsimage, fsimage2, sampledata1, sampledata2, vol_fd
     tdir = tempfile.mkdtemp(prefix='dedup-tests-')
     db = tdir + '/db.sqlite'
     fsimage = tdir + '/fsimage.btrfs'
+    fsimage2 = tdir + '/fsimage-nolabel.btrfs'
     sampledata1 = mk_sample_data(tdir + '/s1.sample')
     sampledata2 = mk_sample_data(tdir + '/s2.sample')
     fs = tdir + '/fs'
@@ -37,12 +38,15 @@ def setup_module():
     # The older mkfs.btrfs on travis somehow needs 256M;
     # sparse file, costs nothing
     subprocess.check_call('truncate -s256M --'.split() + [fsimage])
+    subprocess.check_call('truncate -s256M --'.split() + [fsimage2])
     # mkfs.btrfs is buggy under libefence
     env2 = dict(os.environ)
     if 'LD_PRELOAD' in env2 and 'libefence.so' in env2['LD_PRELOAD']:
         del env2['LD_PRELOAD']
     subprocess.check_call(
         'mkfs.btrfs -LBedupTest --'.split() + [fsimage], env=env2)
+    subprocess.check_call(
+        'mkfs.btrfs --'.split() + [fsimage2], env=env2)
     subprocess.check_call(
         'mount -t btrfs -o loop,compress-force=lzo --'.split() + [fsimage, fs])
     shutil.copy(sampledata1, os.path.join(fs, 'one.sample'))
