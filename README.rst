@@ -29,7 +29,7 @@ Install CFFI.
 Option 1 (recommended): from a git clone
 ----------------------------------------
 
-Get btrfs-progs (we need the headers at a known location):
+Enable submodules (this will pull headers from btrfs-progs)
 
 ::
 
