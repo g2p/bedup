@@ -392,6 +392,9 @@ def dedup_tracked(sess, volset, tt, defrag):
     le = len(query)
 
     if le:
+        # Hopefully close any files we left around
+        gc.collect()
+
         tt.format(
             '{elapsed} Size group {comm1:counter}/{comm1:total} '
             'sampled {mhash:counter} hashed {fhash:counter} '
@@ -445,9 +448,6 @@ class DedupSession(object):
 
 def dedup_tracked1(ds, ofile_reserved, query):
     ofile_soft, ofile_hard = resource.getrlimit(resource.RLIMIT_OFILE)
-
-    # Hopefully close any files we left around
-    gc.collect()
 
     for comm1 in query:
         size = comm1.size
