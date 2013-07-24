@@ -635,7 +635,10 @@ def clone_data(dest, src, check_first):
     return True
 
 
-MAX_DEDUP_LEN = 2**20
+# patch v2 does 16M at once;
+# let's not make that part of the abi though
+# 1M should be safe
+MAX_DEDUP_LEN = 1 * 2**20
 
 def ranges_same(length, src, dests):
     dest_count = len(dests)
