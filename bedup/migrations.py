@@ -34,18 +34,17 @@ def upgrade_with_range(context, from_rev, to_rev):
     #from IPython import embed; embed()
 
 
-def upgrade_schema(engine, database_exists):
+def upgrade_schema(engine):
     context = MigrationContext.configure(engine.connect())
     current_rev = context.get_current_revision()
 
-    if current_rev is None and not database_exists:
-        META.create_all(engine)
-    elif current_rev is None:
+    if current_rev is None:
         inspected_meta = MetaData(bind=engine, reflect=True)
-        # Inspect revisions for one or two releases, then bail if current_rev
-        # is still None, asking to install an older release first.
-        inspected_rev = 1
-        upgrade_with_range(context, inspected_rev, REV)
+        if 'Inode' in inspected_meta.tables:
+            inspected_rev = 1
+            upgrade_with_range(context, inspected_rev, REV)
+        else:
+            META.create_all(engine)
     else:
         current_rev = int(current_rev)
         upgrade_with_range(context, current_rev, REV)
