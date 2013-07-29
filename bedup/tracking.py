@@ -41,6 +41,7 @@ from .platform.openat import fopenat, fopenat_rw
 
 from .datetime import system_now
 from .dedup import ImmutableFDs, cmp_files
+from .filesystem import NotPlugged
 from .hashing import mini_hash_from_file, fiemap_hash_from_file
 from .model import (
     Inode, get_or_create, DedupEvent, DedupEventInode)
@@ -97,10 +98,12 @@ def annotated_inodes_by_size(whole_fs, size):
                 fs_uuid = inode.vol.fs.uuid
                 fs = whole_fs.get_fs(UUID(hex=fs_uuid))
             vol_id = inode.vol_id
-            # XXX Handle unavailable filesystems
             # XXX Make the mountpoint read-only
             try:
                 vol = fs.load_vol_by_root_id(inode.vol.root_id)
+            except NotPlugged:
+                vol = None
+                continue
             except KeyError:
                 vol = None
                 continue

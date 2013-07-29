@@ -168,6 +168,8 @@ class BtrfsFilesystem2(object):
         # subvol=/
         if self._priv_mpoint is not None:
             return
+
+        self.require_plugged()
         self._whole_fs.ensure_unshared()
         pm = tempfile.mkdtemp(suffix='.privmnt')
         subprocess.check_call(
@@ -198,6 +200,10 @@ class BtrfsFilesystem2(object):
         try:
             return self._whole_fs.device_info[self.uuid]
         except KeyError:
+            raise NotPlugged(self)
+
+    def require_plugged(self):
+        if self.uuid not in self._whole_fs.device_info:
             raise NotPlugged(self)
 
     @memoized_property
