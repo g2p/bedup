@@ -39,7 +39,8 @@ def upgrade_schema(engine):
     current_rev = context.get_current_revision()
 
     if current_rev is None:
-        inspected_meta = MetaData(bind=engine, reflect=True)
+        inspected_meta = MetaData()
+        inspected_meta.reflect(bind=engine)
         if 'Inode' in inspected_meta.tables:
             inspected_rev = 1
             upgrade_with_range(context, inspected_rev, REV)
