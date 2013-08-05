@@ -8,8 +8,8 @@ Requirements
 ============
 
 You need Python 2.7 (recommended), Python 3.3, Python 3.2, or PyPy. You
-need Linux 3.3 or newer.  Linux 3.9.4 is recommended, because it fixes a
-scanning bug and is compatible with cross-volume deduplication.
+need Linux 3.3 or newer.  Linux 3.9.4 or newer is recommended, because it
+fixes a scanning bug and is compatible with cross-volume deduplication.
 
 This should get you started on Debian/Ubuntu:
 
