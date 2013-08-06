@@ -25,7 +25,7 @@ import posixpath
 import uuid
 import sys
 
-from ..compat import buffer_to_bytes
+from ..compat import buffer_to_bytes, fsdecode
 from .fiemap import same_extents
 from . import cffi_support
 
@@ -686,7 +686,7 @@ def find_new(volume_fd, min_generation, results_file, terse, sep):
                     results_file.write(
                         'item type %d ino %d len %d gen0 %d name %s%s' % (
                             sh.type, sh.objectid, sh.len, sh.transid,
-                            name, sep))
+                            fsdecode(name), sep))
             elif (sh.type == lib.BTRFS_DIR_ITEM_KEY
                   or sh.type == lib.BTRFS_DIR_INDEX_KEY):
                 item = ffi.cast(
@@ -701,7 +701,7 @@ def find_new(volume_fd, min_generation, results_file, terse, sep):
                         'item type %d dir ino %d len %d'
                         ' gen0 %d gen1 %d type1 %d name %s%s' % (
                             sh.type, sh.objectid, sh.len,
-                            sh.transid, item.transid, item.type, name, sep))
+                            sh.transid, item.transid, item.type, fsdecode(name), sep))
             else:
                 if not terse:
                     results_file.write(
