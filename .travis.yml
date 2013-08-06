@@ -13,7 +13,7 @@ install:
 # instead of exporting those vars (or shipping a pip.conf).
 - export PIP_USE_MIRRORS=true
 - export PIP_DOWNLOAD_CACHE=~/.cache/pip
-- pip install cffi hg+https://bitbucket.org/g2p/tox#egg=tox
+- pip install cffi tox
 - curl --compressed -O https://raw.github.com/g2p/kernels/master/linux.uml
 - chmod +x linux.uml
 - git clone https://github.com/g2p/vido.git
