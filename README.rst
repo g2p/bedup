@@ -172,6 +172,17 @@ users who were unaware of the feature.
 Users of Linux 3.9 or newer can safely pass the `--defrag` option to
 `bedup dedup`, which will defragment files before deduplicating them.
 
+Reporting bugs
+==============
+
+Be sure to mention the following:
+
+- Linux kernel version: uname -rv
+- Python version
+- Distribution
+
+And give some of the program output.
+
 Build status
 ============
 

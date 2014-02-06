@@ -139,6 +139,7 @@ def find_inodes_in_use(fds):
         id_fd_assoc[(st.st_dev, st.st_ino)].append(fd)
 
     def st_id_candidates(it):
+        # map proc paths to stat identifiers (devno and ino)
         for proc_path in it:
             try:
                 st = os.stat(proc_path)
