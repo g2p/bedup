@@ -50,7 +50,7 @@ install_requires = [
     # files dumped in random places
     'pycparser >= 2.9.1',
     'pyxdg',
-    'SQLAlchemy',
+    'SQLAlchemy >= 0.8.2', # needs Query.select_entity_from()
     'contextlib2',
 ]
 

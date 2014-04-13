@@ -329,7 +329,8 @@ class WindowedQuery(object):
             window_start = li[0].size
             window_end = li[-1].size
             # If we wanted to be subtle we'd use limits here as well
-            inodes = self.sess.query(Inode).select_from(self.filtered_s).join(
+            inodes = self.sess.query(Inode).select_entity_from(
+                self.filtered_s).join(
                 window_select, window_select.c.size == Inode.size
             ).order_by(-Inode.size, Inode.ino)
             inodes_by_size = groupby(inodes, lambda inode: inode.size)
