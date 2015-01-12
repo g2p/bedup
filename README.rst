@@ -17,6 +17,12 @@ This should get you started on Debian/Ubuntu:
 
     sudo aptitude install python-pip python-dev libffi-dev build-essential git
 
+This should get you started on Fedora:
+
+::
+
+    yum install python-pip python-devel libffi-devel git
+
 Installation
 ============
 
