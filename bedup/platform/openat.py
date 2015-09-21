@@ -32,7 +32,7 @@ lib = cffi_support.verify(ffi, '''
 
 
 def openat(base_fd, path, flags):
-    fd = lib.openat(base_fd, path, flags)
+    fd = lib.openat(base_fd, os.fsencode(path), flags)
     if fd < 0:
         # There's a little bit of magic here:
         # IOError.errno is only set if there are exactly two or three

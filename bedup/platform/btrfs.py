@@ -21,11 +21,11 @@
 
 
 import cffi
+import os
 import posixpath
-import uuid
 import sys
+import uuid
 
-from os import fsdecode
 from ..compat import buffer_to_bytes
 from .fiemap import same_extents
 from . import cffi_support
@@ -340,17 +340,17 @@ RootInfo = namedtuple('RootInfo', 'path parent_root_id is_frozen')
 
 def name_of_inode_ref(ref):
     namelen = lib.btrfs_stack_inode_ref_name_len(ref)
-    return ffi.string(ffi.cast('char*', ref + 1), namelen)
+    return os.fsdecode(ffi.string(ffi.cast('char*', ref + 1), namelen))
 
 
 def name_of_root_ref(ref):
     namelen = lib.btrfs_stack_root_ref_name_len(ref)
-    return ffi.string(ffi.cast('char*', ref + 1), namelen)
+    return os.fsdecode(ffi.string(ffi.cast('char*', ref + 1), namelen))
 
 
 def name_of_dir_item(item):
     namelen = lib.btrfs_stack_dir_name_len(item)
-    return ffi.string(ffi.cast('char*', item + 1), namelen)
+    return os.fsdecode(ffi.string(ffi.cast('char*', item + 1), namelen))
 
 
 def ioctl_pybug(fd, ioc, arg=0):
@@ -421,7 +421,7 @@ def lookup_ino_paths(volume_fd, ino, alloc_extra=0):  # pragma: no cover
 
     for i_path in range(data_container.elem_cnt):
         ptr = base + offsets[i_path]
-        path = ffi.string(ptr)
+        path = os.fsdecode(ffi.string(ptr))
         yield path
 
 
@@ -462,10 +462,10 @@ def lookup_ino_path_one(volume_fd, ino, tree_id=0):
     args.objectid = ino
     args.treeid = tree_id
     ioctl_pybug(volume_fd, lib.BTRFS_IOC_INO_LOOKUP, ffi.buffer(args))
-    rv = ffi.string(args.name)
+    rv = os.fsdecode(ffi.string(args.name))
     # For some reason the kernel puts a final /
     if tree_id == 0:
-        assert rv[-1:] == b'/', repr(rv)
+        assert rv[-1:] == '/', repr(rv)
         return rv[:-1]
     else:
         return rv
@@ -504,7 +504,7 @@ def read_root_tree(volume_fd):
                 is_frozen = bool(item.flags & lib.BTRFS_ROOT_SUBVOL_RDONLY)
                 item_root_id = sh.objectid
                 if sh.objectid == lib.BTRFS_FS_TREE_OBJECTID:
-                    root_info[sh.objectid] = RootInfo(b'/', None, is_frozen)
+                    root_info[sh.objectid] = RootInfo('/', None, is_frozen)
             elif sh.type == lib.BTRFS_ROOT_BACKREF_KEY:
                 ref = ffi.cast('struct btrfs_root_ref *', sh + 1)
                 assert sh.objectid != lib.BTRFS_FS_TREE_OBJECTID
@@ -687,7 +687,7 @@ def find_new(volume_fd, min_generation, results_file, terse, sep):
                     results_file.write(
                         'item type %d ino %d len %d gen0 %d name %s%s' % (
                             sh.type, sh.objectid, sh.len, sh.transid,
-                            fsdecode(name), sep))
+                            name, sep))
             elif (sh.type == lib.BTRFS_DIR_ITEM_KEY
                   or sh.type == lib.BTRFS_DIR_INDEX_KEY):
                 item = ffi.cast(
@@ -702,7 +702,7 @@ def find_new(volume_fd, min_generation, results_file, terse, sep):
                         'item type %d dir ino %d len %d'
                         ' gen0 %d gen1 %d type1 %d name %s%s' % (
                             sh.type, sh.objectid, sh.len,
-                            sh.transid, item.transid, item.type, fsdecode(name), sep))
+                            sh.transid, item.transid, item.type, name, sep))
             else:
                 if not terse:
                     results_file.write(

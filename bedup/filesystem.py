@@ -30,7 +30,6 @@ from uuid import UUID
 from sqlalchemy.util import memoized_property
 from sqlalchemy.orm.exc import NoResultFound
 
-from os import fsdecode
 from .platform.btrfs import (
     get_fsid, get_root_id, lookup_ino_path_one,
     read_root_tree, BTRFS_FIRST_FREE_OBJECTID)
@@ -142,7 +141,7 @@ class BtrfsFilesystem2(object):
 
     def best_desc(self, root_id):
         if root_id not in self._best_desc:
-            intpath = fsdecode(self.root_info[root_id].path)
+            intpath = self.root_info[root_id].path
             candidate_mis = [
                 mi for mi in self.minfos
                 if not mi.private and path_isprefix(mi.internal_path, intpath)]
@@ -487,17 +486,10 @@ class WholeFS(object):
         di = {}
         lbls = Counter()
         cmd = 'blkid -s LABEL -s UUID -t TYPE=btrfs'.split()
-        subp = subprocess.Popen(cmd, stdout=subprocess.PIPE)
+        subp = subprocess.Popen(cmd, stdout=subprocess.PIPE, universal_newlines=True)
         for line in subp.stdout:
             dev, label, uuid = BLKID_RE.match(line).groups()
-            uuid = UUID(hex=uuid.decode('ascii'))
-            dev = fsdecode(dev)
-            if label is not None:
-                try:
-                    label = label.decode('ascii')
-                except UnicodeDecodeError:
-                    # Don't try to guess.
-                    pass
+            uuid = UUID(hex=uuid)
             if uuid in di:
                 # btrfs raid
                 assert di[uuid].label == label
@@ -583,7 +575,7 @@ class WholeFS(object):
         for volpath in volpaths:
             vol = self._get_vol_by_path(volpath, desc=VolDesc(volpath, True))
             if recurse:
-                if vol.root_info.path != b'/':
+                if vol.root_info.path != '/':
                     tt.notify(
                         '%s isn\'t the root volume, '
                         'use the filesystem uuid for maximum efficiency.' % vol)
@@ -608,8 +600,8 @@ class WholeFS(object):
 
 
 BLKID_RE = re.compile(
-    br'^(?P<dev>/dev/.*):'
-    br'(?:\s+LABEL="(?P<label>[^"]*)"|\s+UUID="(?P<uuid>[^"]*)")+\s*$')
+    r'^(?P<dev>/dev/.*):'
+    r'(?:\s+LABEL="(?P<label>[^"]*)"|\s+UUID="(?P<uuid>[^"]*)")+\s*$')
 
 
 def is_subvolume(btrfs_mountpoint_fd):
