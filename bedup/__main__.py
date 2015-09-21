@@ -29,8 +29,7 @@ import warnings
 import xdg.BaseDirectory  # pyxdg, apt:python-xdg
 
 from collections import defaultdict, OrderedDict
-from contextlib import closing
-from contextlib2 import ExitStack
+from contextlib import closing, ExitStack
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.pool import SingletonThreadPool
 from uuid import UUID

@@ -28,8 +28,7 @@ import sys
 import threading
 
 from collections import defaultdict, namedtuple
-from contextlib import closing, contextmanager
-from contextlib2 import ExitStack
+from contextlib import closing, contextmanager, ExitStack
 from itertools import groupby
 from sqlalchemy.sql import and_, select, func, literal_column
 from uuid import UUID
