@@ -572,8 +572,13 @@ def dedup_tracked1(ds, comm1):
                     ds.skip(inode)
                     continue
                 hasher = hashlib.sha1()
-                for buf in iter(lambda: afile.read(BUFSIZE), b''):
-                    hasher.update(buf)
+                try:
+                    for buf in iter(lambda: afile.read(BUFSIZE), b''):
+                        hasher.update(buf)
+                except OSError as e:
+                    if e.errno == errno.EIO:
+                        continue
+                    raise
 
                 # Gets rid of a race condition
                 st = os.fstat(fd)
