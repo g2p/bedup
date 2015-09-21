@@ -36,6 +36,7 @@ def upgrade_with_range(context, from_rev, to_rev):
 
 def upgrade_schema(engine):
     context = MigrationContext.configure(engine.connect())
+    context._ensure_version_table()
     current_rev = context.get_current_revision()
 
     if current_rev is None:
@@ -46,8 +47,10 @@ def upgrade_schema(engine):
             upgrade_with_range(context, inspected_rev, REV)
         else:
             META.create_all(engine)
+        context.impl._exec(context._version.insert().values(version_num=REV))
     else:
         current_rev = int(current_rev)
         upgrade_with_range(context, current_rev, REV)
-    context._update_current_rev(current_rev, REV)
+        context.impl._exec(context._version.update().values(version_num=REV).where(
+                        context._version.c.version_num == current_rev))
 
