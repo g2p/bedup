@@ -7,21 +7,21 @@ scans are incremental and low-impact.
 Requirements
 ============
 
-You need Python 2.7 (recommended), Python 3.3, Python 3.2, or PyPy. You
-need Linux 3.3 or newer.  Linux 3.9.4 or newer is recommended, because it
-fixes a scanning bug and is compatible with cross-volume deduplication.
+You need Python 3.3 or newer, and Linux 3.3 or newer.
+Linux 3.9.4 or newer is recommended, because it fixes a scanning bug
+and is compatible with cross-volume deduplication.
 
 This should get you started on Debian/Ubuntu:
 
 ::
 
-    sudo aptitude install python-pip python-dev libffi-dev build-essential git
+    sudo aptitude install python3-pip python3-dev libffi-dev build-essential git
 
 This should get you started on Fedora:
 
 ::
 
-    yum install python-pip python-devel libffi-devel git
+    yum install python3-pip python3-devel libffi-devel git
 
 Installation
 ============
@@ -30,7 +30,7 @@ Install CFFI.
 
 ::
 
-    pip install --user cffi
+    pip3 install --user cffi
 
 Option 1 (recommended): from a git clone
 ----------------------------------------
@@ -46,7 +46,7 @@ pull the rest of our Python dependencies:
 
 ::
 
-    python setup.py install --user
+    python3 setup.py install --user
     cp -lt ~/bin ~/.local/bin/bedup
 
 Option 2: from a PyPI release
@@ -54,7 +54,7 @@ Option 2: from a PyPI release
 
 ::
 
-    pip install --user bedup
+    pip3 install --user bedup
     cp -lt ~/bin ~/.local/bin/bedup
 
 Running
@@ -65,7 +65,7 @@ Running
     bedup --help
     bedup <command> --help
 
-If bedup isn't in your path or your sudo path, use ``python -m bedup`` instead.
+If bedup isn't in your path or your sudo path, use ``python3 -m bedup`` instead.
 
 You'll see a list of supported commands.
 
@@ -96,11 +96,11 @@ Hacking
 
 ::
 
-   pip install --user pytest tox ipdb https://github.com/jbalogh/check
+   pip3 install --user pytest tox ipdb https://github.com/jbalogh/check
 
 To run the tests::
 
-   sudo python -m pytest -s bedup
+   sudo python3 -m pytest -s bedup
 
 To test compatibility and packaging as well::
 
