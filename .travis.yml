@@ -3,6 +3,7 @@ language: python
 install:
 - uname -a
 - lsb_release -a
+- python3 --version
 - pypy --version
 - sudo touch /etc/suid-debug
 # Travis has a python3, but not the bin/python3 command
