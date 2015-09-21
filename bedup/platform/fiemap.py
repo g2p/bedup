@@ -1,5 +1,5 @@
 # bedup - Btrfs deduplication
-# Copyright (C) 2012 Gabriel de Perthuis <g2p.code+bedup@gmail.com>
+# Copyright (C) 2015 Gabriel de Perthuis <g2p.code+bedup@gmail.com>
 #
 # This file is part of bedup.
 #
@@ -110,7 +110,7 @@ def fiemap(fd):
         fcntl.ioctl(fd, lib.FS_IOC_FIEMAP, fiemap_pybuf)
         if fiemap_ptr.fm_mapped_extents == 0:
             break
-        for i in xrange(fiemap_ptr.fm_mapped_extents):
+        for i in range(fiemap_ptr.fm_mapped_extents):
             extent = fiemap_ptr.fm_extents[i]
             yield FiemapExtent(
                 extent.fe_logical, extent.fe_physical,

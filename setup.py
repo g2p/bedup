@@ -1,8 +1,7 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 
 from setuptools import setup
 from shutil import copystat
-from sys import version_info
 from setuptools.command.build_py import build_py
 
 import os
@@ -54,9 +53,6 @@ install_requires = [
     'contextlib2',
 ]
 
-if version_info < (2, 7):
-    install_requires.append('argparse')
-
 setup(
     name='bedup',
     version='0.9.0',
@@ -79,10 +75,8 @@ setup(
         'bedup',
         'bedup.platform',
     ],
-    use_2to3=True,
     zip_safe=False,  # cargo-culted from the CFFI docs
     classifiers='''
-        Programming Language :: Python :: 2
         Programming Language :: Python :: 3
         Programming Language :: Python :: Implementation :: CPython
         Programming Language :: Python :: Implementation :: PyPy

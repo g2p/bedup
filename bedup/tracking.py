@@ -1,6 +1,6 @@
 # vim: set fileencoding=utf-8 sw=4 ts=4 et :
 # bedup - Btrfs deduplication
-# Copyright (C) 2012 Gabriel de Perthuis <g2p.code+bedup@gmail.com>
+# Copyright (C) 2015 Gabriel de Perthuis <g2p.code+bedup@gmail.com>
 #
 # This file is part of bedup.
 #
@@ -34,7 +34,7 @@ from itertools import groupby
 from sqlalchemy.sql import and_, select, func, literal_column
 from uuid import UUID
 
-from .compat import fsdecode
+from os import fsdecode
 from .platform.btrfs import (
     get_root_generation, clone_data, defragment as btrfs_defragment)
 from .platform.openat import fopenat, fopenat_rw
@@ -175,7 +175,7 @@ def track_updated_files(sess, vol, tt):
             break
 
         offset = 0
-        for item_id in xrange(sk.nr_items):
+        for item_id in range(sk.nr_items):
             sh = ffi.cast(
                 'struct btrfs_ioctl_search_header *', args.buf + offset)
             offset += ffi.sizeof('struct btrfs_ioctl_search_header') + sh.len
@@ -479,7 +479,7 @@ def dedup_tracked1(ds, comm1):
             by_mh[mini_hash_from_file(inode, rfile)].append(inode)
             ds.tt.update(mhash=None)
 
-    for inodes in by_mh.itervalues():
+    for inodes in by_mh.values():
         inode_count = len(inodes)
         if inode_count < 2:
             continue
@@ -602,7 +602,7 @@ def dedup_tracked1(ds, comm1):
                 by_hash[hasher.digest()].append(afile)
                 ds.tt.update(fhash=None)
 
-            for fileset in by_hash.itervalues():
+            for fileset in by_hash.values():
                 dedup_fileset(ds, fileset, fd_names, fd_inodes, size)
 
 
