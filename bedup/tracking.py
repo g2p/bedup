@@ -233,6 +233,7 @@ class Checkpointer(threading.Thread):
             self.conn.execute('PRAGMA wal_checkpoint;')
             self.evt.clear()
             if self.done:
+                self.conn.close()
                 return
 
     def please_checkpoint(self):
