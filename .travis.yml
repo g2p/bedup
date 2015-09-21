@@ -1,31 +1,31 @@
 language: python
 
+python:
+- "3.2"
+- "3.3"
+- "3.4"
+- "3.5"
+- "pypy3"
+
 install:
 - uname -a
 - lsb_release -a
 - python3 --version
-- pypy --version
+- pypy3 --version
 - sudo touch /etc/suid-debug
-# Travis has a python3, but not the bin/python3 command
-- sudo apt-get -y install libffi-dev btrfs-tools python3-minimal user-mode-linux
+# Travis has a python3, but the /usr/bin/python3 command is Python 3.2, beurk
+- sudo apt-get -y install libffi-dev btrfs-tools
 - which python3
-# Those exports make sure pip invocations through tox, virtualenv, etc
-# hit the cache. Travis is stupid to document manual addition of cli flags
-# instead of exporting those vars (or shipping a pip.conf).
-- export PIP_USE_MIRRORS=true
-- export PIP_DOWNLOAD_CACHE=~/.cache/pip
-- pip install cffi tox
+- which pypy3
+- pip install cffi pytest git+https://github.com/g2p/vido.git@for-travis
 - curl --compressed -LO https://github.com/g2p/kernels/raw/master/linux.uml
 - chmod +x linux.uml
-- git clone https://github.com/g2p/vido.git
-- export GETROOT="$PWD/vido/vido --kernel=./linux.uml --"
+- pip install .
 
 # tox has some advantages over travis runners:
 # it tests installation from the sdist, which will
 # report things like missing header files.
 
 script:
-# Travis has PyPy 1.9 which is too old (want a PPA to upgrade).
-- time tox -e pypy || echo "Ignoring PyPy failures on Travis"
-- time tox -e py33,py27,py32
+- time vido --kernel=./linux.uml -- python3 -Wd -bb -Wignore:::site -Wignore:::cffi.verifier -Wignore:::_pytest.main -Wignore:::_pytest.assertion.oldinterpret -m pytest --capture=no bedup/
 
