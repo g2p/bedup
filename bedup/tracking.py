@@ -34,7 +34,6 @@ from itertools import groupby
 from sqlalchemy.sql import and_, select, func, literal_column
 from uuid import UUID
 
-from os import fsdecode
 from .platform.btrfs import (
     get_root_generation, clone_data, defragment as btrfs_defragment)
 from .platform.openat import fopenat, fopenat_rw
@@ -432,7 +431,7 @@ class DedupSession(object):
     @contextmanager
     def open_by_inode(self, inode):
         try:
-            pathb = inode.vol.live.lookup_one_path(inode)
+            path = inode.vol.live.lookup_one_path(inode)
         except IOError as e:
             if e.errno != errno.ENOENT:
                 raise
@@ -443,7 +442,7 @@ class DedupSession(object):
             return
 
         try:
-            rfile = fopenat(inode.vol.live.fd, pathb)
+            rfile = fopenat(inode.vol.live.fd, path)
         except IOError as e:
             if e.errno not in (errno.ENOENT, errno.EISDIR):
                 raise
@@ -522,15 +521,14 @@ def dedup_tracked1(ds, comm1):
             # yet because the crypto hash might eliminate it.
             # We may also want to defragment the source.
             try:
-                pathb = inode.vol.live.lookup_one_path(inode)
-                path = fsdecode(pathb)
+                path = inode.vol.live.lookup_one_path(inode)
             except IOError as e:
                 if e.errno == errno.ENOENT:
                     ds.sess.delete(inode)
                     continue
                 raise
             try:
-                afile = fopenat_rw(inode.vol.live.fd, pathb)
+                afile = fopenat_rw(inode.vol.live.fd, path)
             except IOError as e:
                 if e.errno == errno.ETXTBSY:
                     # The file contains the image of a running process,
