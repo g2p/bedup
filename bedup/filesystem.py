@@ -1,6 +1,6 @@
 # vim: set fileencoding=utf-8 sw=4 ts=4 et :
 # bedup - Btrfs deduplication
-# Copyright (C) 2012 Gabriel de Perthuis <g2p.code+bedup@gmail.com>
+# Copyright (C) 2015 Gabriel de Perthuis <g2p.code+bedup@gmail.com>
 #
 # This file is part of bedup.
 #
@@ -30,7 +30,7 @@ from uuid import UUID
 from sqlalchemy.util import memoized_property
 from sqlalchemy.orm.exc import NoResultFound
 
-from .compat import fsdecode
+from os import fsdecode
 from .platform.btrfs import (
     get_fsid, get_root_id, lookup_ino_path_one,
     read_root_tree, BTRFS_FIRST_FREE_OBJECTID)
@@ -232,7 +232,7 @@ class BtrfsFilesystem2(object):
     def _iter_subvols(self, start_root_ids):
         child_id_map = defaultdict(list)
 
-        for root_id, ri in self.root_info.iteritems():
+        for root_id, ri in self.root_info.items():
             if ri.parent_root_id is not None:
                 child_id_map[ri.parent_root_id].append(root_id)
 
@@ -402,7 +402,7 @@ class WholeFS(object):
 
     def iter_fs(self):
         seen_fs_ids = []
-        for (uuid, di) in self.device_info.iteritems():
+        for (uuid, di) in self.device_info.items():
             fs = self.get_fs(uuid)
             seen_fs_ids.append(fs._impl.id)
             yield fs, di
@@ -416,7 +416,7 @@ class WholeFS(object):
             yield self.get_fs(UUID(hex=uuid)), None
 
     def iter_open_vols(self):
-        return self._vol_map.itervalues()
+        return iter(self._vol_map.values())
 
     def _get_vol_by_path(self, volpath, desc):
         volpath = os.path.normpath(volpath)
@@ -531,7 +531,7 @@ class WholeFS(object):
         self.clean_up_mpoints()
 
     def load_vols_for_device(self, devpath, tt):
-        for uuid, di in self.device_info.iteritems():
+        for uuid, di in self.device_info.items():
             if any(os.path.samefile(dp, devpath) for dp in di.devices):
                 fs = self.get_fs(uuid)
                 return self.load_vols_for_fs(fs, tt)
@@ -562,7 +562,7 @@ class WholeFS(object):
         # All non-frozen volumes that are on a
         # filesystem that has a non-ro mountpoint.
         loaded = []
-        for (uuid, di) in self.device_info.iteritems():
+        for (uuid, di) in self.device_info.items():
             fs = self.get_fs(uuid)
             try:
                 fs.root_info

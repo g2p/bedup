@@ -1,7 +1,7 @@
 # vim: set fileencoding=utf-8 sw=4 ts=4 et :
 
 # bedup - Btrfs deduplication
-# Copyright (C) 2012 Gabriel de Perthuis <g2p.code+bedup@gmail.com>
+# Copyright (C) 2015 Gabriel de Perthuis <g2p.code+bedup@gmail.com>
 #
 # This file is part of bedup.
 #
@@ -39,7 +39,7 @@ class FilesDifferError(ValueError):
 
 class FilesInUseError(RuntimeError):
     def describe(self, ofile):
-        for (fi, users) in self.args[1].iteritems():
+        for (fi, users) in self.args[1].items():
             ofile.write('File %s is in use\n' % fi)
             for use_info in users:
                 ofile.write('  used as %r\n' % (use_info,))

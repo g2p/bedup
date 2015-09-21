@@ -1,7 +1,7 @@
 # vim: set fileencoding=utf-8 sw=4 ts=4 et :
 
 # bedup - Btrfs deduplication
-# Copyright (C) 2012 Gabriel de Perthuis <g2p.code+bedup@gmail.com>
+# Copyright (C) 2015 Gabriel de Perthuis <g2p.code+bedup@gmail.com>
 #
 # This file is part of bedup.
 #
@@ -18,14 +18,15 @@
 # You should have received a copy of the GNU General Public License
 # along with bedup.  If not, see <http://www.gnu.org/licenses/>.
 
-from __future__ import print_function
+
 
 import cffi
 import posixpath
 import uuid
 import sys
 
-from ..compat import buffer_to_bytes, fsdecode
+from os import fsdecode
+from ..compat import buffer_to_bytes
 from .fiemap import same_extents
 from . import cffi_support
 
@@ -418,7 +419,7 @@ def lookup_ino_paths(volume_fd, ino, alloc_extra=0):  # pragma: no cover
     base = ffi.cast('char*', data_container.val)
     offsets = ffi.cast('uint64_t*', data_container.val)
 
-    for i_path in xrange(data_container.elem_cnt):
+    for i_path in range(data_container.elem_cnt):
         ptr = base + offsets[i_path]
         path = ffi.string(ptr)
         yield path
@@ -494,7 +495,7 @@ def read_root_tree(volume_fd):
             break
 
         offset = 0
-        for item_id in xrange(sk.nr_items):
+        for item_id in range(sk.nr_items):
             sh = ffi.cast(
                 'struct btrfs_ioctl_search_header *', args.buf + offset)
             offset += ffi.sizeof('struct btrfs_ioctl_search_header') + sh.len
@@ -578,7 +579,7 @@ def get_root_generation(volume_fd):
             break
 
         offset = 0
-        for item_id in xrange(sk.nr_items):
+        for item_id in range(sk.nr_items):
             sh = ffi.cast(
                 'struct btrfs_ioctl_search_header *', args.buf + offset)
             offset += ffi.sizeof('struct btrfs_ioctl_search_header') + sh.len
@@ -635,7 +636,7 @@ def find_new(volume_fd, min_generation, results_file, terse, sep):
             break
 
         offset = 0
-        for item_id in xrange(sk.nr_items):
+        for item_id in range(sk.nr_items):
             sh = ffi.cast(
                 'struct btrfs_ioctl_search_header *', args.buf + offset)
             offset += ffi.sizeof('struct btrfs_ioctl_search_header') + sh.len

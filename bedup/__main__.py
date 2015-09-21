@@ -1,7 +1,7 @@
 # vim: set fileencoding=utf-8 sw=4 ts=4 et :
 
 # bedup - Btrfs deduplication
-# Copyright (C) 2012 Gabriel de Perthuis <g2p.code+bedup@gmail.com>
+# Copyright (C) 2015 Gabriel de Perthuis <g2p.code+bedup@gmail.com>
 #
 # This file is part of bedup.
 #
@@ -18,7 +18,7 @@
 # You should have received a copy of the GNU General Public License
 # along with bedup.  If not, see <http://www.gnu.org/licenses/>.
 
-from __future__ import print_function
+
 
 import argparse
 import errno
@@ -190,7 +190,7 @@ def vol_cmd(args):
                     tt.notify('Deduplicating volume %s' % vol)
                     dedup_tracked(sess, [vol], tt, defrag=args.defrag)
             elif args.groupby == 'mpoint':
-                for fs, volset in vols_by_fs.iteritems():
+                for fs, volset in vols_by_fs.items():
                     tt.notify('Deduplicating filesystem %s' % fs)
                     dedup_tracked(sess, volset, tt, defrag=args.defrag)
             else:
@@ -224,7 +224,7 @@ def user_confirmation(message, default):
 
     while True:
         try:
-            choice = raw_input("%s (%s) " % (message, choices)).lower().strip()
+            choice = input("%s (%s) " % (message, choices)).lower().strip()
         except EOFError:
             # non-interactive
             choice = ''
