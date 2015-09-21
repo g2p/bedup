@@ -22,11 +22,13 @@ install:
 - python3 --version
 - pypy3 --version
 - sudo touch /etc/suid-debug
-# Travis has a python3, but the /usr/bin/python3 command is Python 3.2, beurk
+# Travis has a python3, but the /usr/bin/python3 command is Python 3.2, because it's an ancient LTS
+- sudo ln -Tsf ~/virtualenv/python3.3.*/bin/python3 /usr/bin/python3
 - sudo apt-get -y install libffi-dev btrfs-tools
 - which python3
 - which pypy3
-- pip install cffi pytest git+https://github.com/g2p/vido.git@for-travis
+- pip install cffi pytest
+- git clone https://github.com/g2p/vido.git -b for-travis
 - curl --compressed -LO https://github.com/g2p/kernels/raw/master/linux.uml
 - chmod +x linux.uml
 - pip install .
@@ -36,5 +38,5 @@ install:
 # report things like missing header files.
 
 script:
-- time vido --kernel=./linux.uml -- python3 -Wd -bb -Wignore:::site -Wignore:::cffi.verifier -Wignore:::_pytest.main -Wignore:::_pytest.assertion.oldinterpret -m pytest --capture=no bedup/
+- time vido/vido --kernel=./linux.uml -- python3 -Wd -bb -Wignore:::site -Wignore:::cffi.verifier -Wignore:::_pytest.main -Wignore:::_pytest.assertion.oldinterpret -m pytest --capture=no bedup/
 
