@@ -21,7 +21,7 @@ This should get you started on Fedora:
 
 ::
 
-    yum install python3-pip python3-devel libffi-devel git
+    yum install python3-pip python3-devel libffi-devel gcc git
 
 Installation
 ============
@@ -65,7 +65,8 @@ Running
     bedup --help
     bedup <command> --help
 
-If bedup isn't in your path or your sudo path, use ``python3 -m bedup`` instead.
+On Debian and Fedora, you may need to use `sudo -E ~/bin/bedup` or install cffi
+and bedup as root (bedup and its dependencies will get installed to /usr/local).
 
 You'll see a list of supported commands.
 
