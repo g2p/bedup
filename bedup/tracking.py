@@ -629,7 +629,16 @@ def dedup_fileset(ds, fileset, fd_names, fd_inodes, size):
             ds.tt.notify('Files differ: %r %r' % (sdesc, ddesc))
             assert False, (sdesc, ddesc)
             return
-        if clone_data(dest=dfd, src=sfd, check_first=True):
+        try:
+            deduped = clone_data(dest=dfd, src=sfd, check_first=True)
+        except IOError as e:
+            if e.errno == errno.EINVAL:
+                ds.tt.notify(
+                    'Error deduplicating, maybe a file is marked NODATACOW:\n'
+                    '- %r\n- %r' % (sdesc, ddesc))
+                return
+            raise
+        if deduped:
             ds.tt.notify(
                 'Deduplicated:\n- %r\n- %r' % (sdesc, ddesc))
             dfiles_successful.append(dfile)
