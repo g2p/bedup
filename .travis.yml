@@ -1,7 +1,6 @@
 language: python
 
 python:
-- "3.2"
 - "3.3"
 - "3.4"
 - "3.5"
@@ -9,11 +8,7 @@ python:
 
 matrix:
   allow_failures:
-    # PyTest breakage
-    - python: "3.5"
-    # Vido doesn't run on 3.2
-    - python: "3.2"
-    # PyPy stdlib is still 3.2
+    # Neither vido nor bedup run on 3.2, PyPy stdlib is still 3.2
     - python: pypy3
 
 install:
