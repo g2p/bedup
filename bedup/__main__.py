@@ -21,7 +21,9 @@
 
 
 import argparse
+import codecs
 import errno
+import locale
 import os
 import sqlalchemy
 import sys
@@ -329,7 +331,14 @@ def is_in_path(cmd):
 
 
 def main(argv):
-    progname = 'bedup' if is_in_path('bedup') else 'python -m bedup'
+    progname = 'bedup' if is_in_path('bedup') else 'python3 -m bedup'
+    io_enc = codecs.lookup(locale.getpreferredencoding()).name
+    if io_enc == 'ascii':
+        print(
+            'bedup will abort because Python was configured to use ASCII '
+            'for console I/O.\nSee https://git.io/vnzk6 which '
+              'explains how to use a UTF-8 locale.', file=sys.stderr)
+        return 1
     parser = argparse.ArgumentParser(prog=progname)
     parser.add_argument(
         '--debug', action='store_true', help=argparse.SUPPRESS)

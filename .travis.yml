@@ -30,11 +30,12 @@ install:
 - curl --compressed -LO https://github.com/g2p/kernels/raw/master/linux.uml
 - chmod +x linux.uml
 - pip install .
+- sudo locale-gen en_US.UTF-8
 
 # tox has some advantages over travis runners:
 # it tests installation from the sdist, which will
 # report things like missing header files.
 
 script:
-- time vido --kernel=./linux.uml -- python3 -Wd -bb -Wignore:::site -Wignore:::cffi.verifier -Wignore:::_pytest.main -Wignore:::_pytest.assertion.oldinterpret -m pytest --capture=no bedup/
+- time LC_ALL=en_US.UTF-8 vido --pass-env LC_ALL --kernel=./linux.uml -- python3 -Wd -bb -Wignore:::site -Wignore:::cffi.verifier -Wignore:::_pytest.main -Wignore:::_pytest.assertion.oldinterpret -m pytest --capture=no bedup/
 
