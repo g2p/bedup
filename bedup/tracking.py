@@ -475,7 +475,13 @@ def dedup_tracked1(ds, comm1):
         with ds.open_by_inode(inode) as rfile:
             if rfile is None:
                 continue
-            by_mh[mini_hash_from_file(inode, rfile)].append(inode)
+            try:
+                by_mh[mini_hash_from_file(inode, rfile)].append(inode)
+            except IOError as e:
+                if e.errno == errno.EIO:
+                    ds.tt.notify('%r has IO errors, skipping' % inode)
+                    continue
+                raise
             ds.tt.update(mhash=None)
 
     for inodes in by_mh.values():
