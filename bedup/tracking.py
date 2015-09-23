@@ -34,7 +34,7 @@ from sqlalchemy.sql import and_, select, func, literal_column
 from uuid import UUID
 
 from .platform.btrfs import (
-    get_root_generation, clone_data, defragment as btrfs_defragment)
+    get_root_generation, clone_data, defragment as btrfs_defragment, lib)
 from .platform.openat import fopenat, fopenat_rw
 
 from .datetime import system_now
@@ -142,7 +142,6 @@ def track_updated_files(sess, vol, tt):
     args = ffi.new('struct btrfs_ioctl_search_args *')
     args_buffer = ffi.buffer(args)
     sk = args.key
-    lib = ffi.verifier.load_library()
 
     # Not a valid objectid that I know.
     # But find-new uses that and it seems to work.

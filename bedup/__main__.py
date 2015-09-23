@@ -478,6 +478,8 @@ Fake inode updates from the latest dedup events (useful for benchmarking).""")
             # Overrides the default filter that ignores deprecations
             # and prints the rest.
             warnings.simplefilter('error')
+            warnings.filterwarnings('ignore', module='IPython\..*')
+            warnings.filterwarnings('ignore', module='alembic\..*')
             return args.action(args)
     else:
         try:
