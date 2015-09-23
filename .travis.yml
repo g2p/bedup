@@ -21,7 +21,7 @@ install:
 - sudo apt-get -y install libffi-dev btrfs-tools
 - which python3
 - which pypy3
-- pip install cffi pytest git+https://github.com/g2p/vido.git@for-travis
+- pip install cffi pytest pytest-cov coveralls git+https://github.com/g2p/vido.git@for-travis
 - curl --compressed -LO https://github.com/g2p/kernels/raw/master/linux.uml
 - chmod +x linux.uml
 - pip install .
@@ -32,5 +32,8 @@ install:
 # report things like missing header files.
 
 script:
-- time LC_ALL=en_US.UTF-8 vido --pass-env LC_ALL --kernel=./linux.uml -- python3 -Wd -bb -Wignore:::site -Wignore:::cffi.verifier -Wignore:::_pytest.main -Wignore:::_pytest.assertion.oldinterpret -m pytest --capture=no bedup/
+- time LC_ALL=en_US.UTF-8 vido --pass-env LC_ALL --kernel=./linux.uml -- python3 -Wd -bb -Wignore:::site -Wignore:::cffi.verifier -Wignore:::_pytest.main -Wignore:::_pytest.assertion.oldinterpret -m pytest --cov=bedup --capture=no bedup/
+
+after_success:
+- coveralls
 
