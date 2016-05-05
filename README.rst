@@ -11,7 +11,13 @@ You need Python 3.3 or newer, and Linux 3.3 or newer.
 Linux 3.9.4 or newer is recommended, because it fixes a scanning bug
 and is compatible with cross-volume deduplication.
 
-This should get you started on Debian/Ubuntu:
+This should get you started on Ubuntu 16.04:
+
+::
+
+    sudo aptitude install python3-pip python3-dev python3-cffi libffi-dev build-essential git
+
+This should get you started on earlier versions of Debian/Ubuntu:
 
 ::
 
@@ -26,7 +32,7 @@ This should get you started on Fedora:
 Installation
 ============
 
-Install CFFI.
+On systems other than Ubuntu 16.04 you need to install CFFI:
 
 ::
 
