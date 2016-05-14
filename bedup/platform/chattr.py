@@ -45,7 +45,7 @@ ffi.cdef('''
 #define FS_DIRTY_FL ...
 #define FS_COMPRBLK_FL ... /* One or more compressed clusters */
 #define FS_NOCOMP_FL ... /* Don't compress */
-#define FS_ECOMPR_FL ... /* Compression error */
+//#define FS_ECOMPR_FL ... /* Compression error */
 /* End compression flags --- maybe not all used */
 #define FS_BTREE_FL ... /* btree format dir */
 #define FS_INDEX_FL ... /* hash-indexed directory */
@@ -55,7 +55,7 @@ ffi.cdef('''
 #define FS_DIRSYNC_FL ... /* dirsync behaviour (directories only) */
 #define FS_TOPDIR_FL ... /* Top of directory hierarchies*/
 #define FS_EXTENT_FL ... /* Extents */
-#define FS_DIRECTIO_FL ... /* Use direct i/o */
+//#define FS_DIRECTIO_FL ... /* Use direct i/o */
 #define FS_NOCOW_FL ... /* Do not cow file */
 #define FS_RESERVED_FL ... /* reserved for ext2 lib */
 
