@@ -542,7 +542,7 @@ def read_root_tree(volume_fd):
     # Deal with parent_root_id > root_id,
     # happens after moving subvolumes.
     while ri_rel:
-        for (root_id, ri) in ri_rel.items():
+        for (root_id, ri) in list(ri_rel.items()):
             if ri.parent_root_id not in root_info:
                 continue
             parent_path = root_info[ri.parent_root_id].path
